@@ -33,7 +33,7 @@ export default function Navigation({ items }: { items: Entry[] }) {
   if (path.startsWith("/admin")) return null;
   return (
     <>
-      <header className={`site-header ${compact ? "compact" : ""}`}>
+      <header className={`site-header ${compact ? "compact" : ""} ${path === "/" ? "over-hero" : ""}`}>
         <Brand />
         <nav
           className={open ? "nav-links open" : "nav-links"}

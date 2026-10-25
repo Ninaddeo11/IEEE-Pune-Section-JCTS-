@@ -3,7 +3,8 @@ import { useSearchParams } from "@/client/router";
 import { Search } from "lucide-react";
 import type { Entry } from "@/lib/content";
 
-import { ContentCard, EmptyState } from "./ui";
+import EditorialCollection from "./editorial-collection";
+import { EmptyState } from "./ui";
 export default function Listing({
   items,
   collection,
@@ -129,11 +130,7 @@ export default function Listing({
         {filtered.length} {filtered.length === 1 ? "result" : "results"}
       </p>
       {filtered.length ? (
-        <div className="cards-grid">
-          {filtered.map((item, i) => (
-            <ContentCard key={item.id} item={item} index={i} />
-          ))}
-        </div>
+        <EditorialCollection items={filtered} collection={collection} />
       ) : (
         <EmptyState
           title={items.length ? "No matches. Keep exploring." : undefined}

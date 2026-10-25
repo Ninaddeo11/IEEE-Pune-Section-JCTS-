@@ -18,6 +18,7 @@ const Activities = lazy(() => import("./pages/activities"));
 const Search = lazy(() => import("./pages/search"));
 const Admin = lazy(() => import("./pages/admin"));
 import "./styles.css";
+import "./premium.css";
 const initialElement = document.getElementById("page-data");
 const initial: ViewData | null = initialElement?.textContent
   ? JSON.parse(initialElement.textContent)

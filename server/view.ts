@@ -349,6 +349,7 @@ export async function buildView(path: string): Promise<ViewData> {
       entries("pages"),
       entries("settings"),
       entries(section),
+      ...(section === "about" ? [entries("focus-areas")] : []),
       ...(section === "news"
         ? [entries("announcements")]
         : section === "resources"

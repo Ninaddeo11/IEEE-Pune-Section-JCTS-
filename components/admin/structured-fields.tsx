@@ -1,4 +1,7 @@
 type Props = {
+  fields?: string[];
+  showGallery?: boolean;
+  showStats?: boolean;
   collection: string;
   value: string;
   onChange: (value: string) => void;
@@ -23,6 +26,9 @@ const arrayFields: Record<string, string[]> = {
   news: ["tags"],
 };
 export default function StructuredFields({
+  fields,
+  showGallery = true,
+  showStats = true,
   collection,
   value,
   onChange,
@@ -43,7 +49,7 @@ export default function StructuredFields({
   return (
     <>
       <div className="form-grid">
-        {(arrayFields[collection] ?? []).map((field) => (
+        {(fields ?? arrayFields[collection] ?? []).map((field) => (
           <label key={field}>
             {field[0].toUpperCase() + field.slice(1)} · one per line
             <textarea
@@ -58,7 +64,7 @@ export default function StructuredFields({
           </label>
         ))}
       </div>
-      {["activities", "gallery"].includes(collection) && (
+      {showGallery && ["activities", "gallery"].includes(collection) && (
         <div style={{ marginBlock: 25 }}>
           <h3 style={{ fontSize: 16 }}>Gallery</h3>
           <select
@@ -117,7 +123,7 @@ export default function StructuredFields({
           ))}
         </div>
       )}
-      {collection === "activities" && (
+      {showStats && collection === "activities" && (
         <details style={{ marginBlock: 20 }}>
           <summary>Impact statistics</summary>
           <div className="form-grid" style={{ marginTop: 20 }}>

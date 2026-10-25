@@ -97,7 +97,13 @@ test("an administrator can create, preview, publish, unpublish and delete an act
   await page
     .locator(".tiptap")
     .fill("A rich text description for integration verification.");
+  await page.getByRole("tab", { name: /Event/ }).click();
   await page.getByLabel("Date", { exact: true }).fill("2029-05-01");
+  await page.getByRole("button", { name: "Live preview", exact: true }).click();
+  await expect(
+    page.getByRole("dialog").getByRole("heading", { level: 1 }),
+  ).toHaveText("Integration workshop 2029");
+  await page.getByRole("button", { name: "Close live preview" }).click();
   const saved = page.waitForResponse(
     (response) =>
       response.url().endsWith("/api/content") &&
@@ -139,7 +145,7 @@ test("an administrator can create, preview, publish, unpublish and delete an act
     (await admin.delete("/api/content", { data: { id: record.id } })).ok(),
   ).toBe(true);
 });
-test("every editorial collection supports persistent CRUD and audit records", async () => {
+test("every editorial collection supports persistent CRUD and audit records", async ({page}) => {
   for (const collection of collections) {
     const payload = {
       ...blankEntry,
@@ -158,6 +164,11 @@ test("every editorial collection supports persistent CRUD and audit records", as
     });
     expect(response.ok(), await response.text()).toBe(true);
     record = await response.json();
+    if (["research","publications","leadership","news","opportunities","gallery"].includes(collection)) {
+      await page.goto(`/${collection}?q=${encodeURIComponent(record.title)}`);
+      await expect(page.getByRole("heading",{name:record.title,exact:true})).toBeVisible();
+      if (["research","publications","leadership"].includes(collection)) await page.screenshot({path:`artifacts/premium-${collection}.png`,fullPage:true});
+    }
     expect(
       (await db.content.findUniqueOrThrow({ where: { id: record.id } })).title,
     ).toBe(`Updated ${collection}`);
@@ -834,4 +845,112 @@ test("legacy event timestamp backfill preserves content and applies its timezone
     expect(rows[0].endsAt.toISOString()).toBe("2026-11-15T06:30:00.000Z");
     expect(rows[0].scheduledAt.toISOString()).toBe("2026-11-01T00:00:00.000Z");
   });
+});
+
+test("visual homepage builder reorders, toggles, audits and rejects stale changes", async ({
+  page,
+  playwright,
+}) => {
+  await page.context().addCookies((await admin.storageState()).cookies);
+  const originals = await db.content.findMany({
+    where: { collection: "homepage" },
+  });
+  try {
+    await page.goto("/admin/homepage");
+    await expect(
+      page.getByRole("heading", { name: "Your chapter. Your canvas." }),
+    ).toBeVisible();
+    const first = page.locator(".builder-section").first();
+    const firstTitle = await first.locator("h2").innerText();
+    await first
+      .getByRole("button", { name: `Move ${firstTitle} down`, exact: true })
+      .click();
+    const dragSource = page.locator(".builder-section").first();
+    const dragTitle = await dragSource.locator("h2").innerText();
+    await dragSource.dragTo(page.locator(".builder-section").nth(2));
+    await expect(page.locator(".builder-section").nth(2)).toContainText(
+      dragTitle,
+    );
+    await page
+      .getByRole("button", { name: `Disable ${firstTitle}`, exact: true })
+      .click();
+    const responsePromise = page.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/homepage-layout") &&
+        r.request().method() === "POST",
+    );
+    await page
+      .getByRole("button", { name: "Save layout", exact: true })
+      .click();
+    expect((await responsePromise).ok()).toBe(true);
+    await expect(page.getByRole("status")).toContainText(
+      "Homepage layout saved",
+    );
+    const changed = await db.content.findFirstOrThrow({
+      where: { collection: "homepage", title: firstTitle },
+    });
+    expect((changed.data as Record<string, unknown>).enabled).toBe(false);
+    expect(
+      await db.auditLog.count({
+        where: { target: changed.id, action: "UPDATED_HOMEPAGE_LAYOUT" },
+      }),
+    ).toBeGreaterThan(0);
+    const original = originals.find((e) => e.id === changed.id)!;
+    const stale = await admin.post("/api/homepage-layout", {
+      data: {
+        items: [
+          {
+            id: changed.id,
+            version: original.version,
+            order: 0,
+            enabled: true,
+          },
+        ],
+      },
+    });
+    expect(stale.status()).toBe(409);
+    const event = await playwright.request.newContext({
+      baseURL: "http://127.0.0.1:3001",
+      extraHTTPHeaders: { ...origin, "x-forwarded-for": "127.0.0.7" },
+    });
+    try {
+      expect(
+        (
+          await event.post("/api/auth", {
+            data: {
+              email: "event_manager@cms-test.invalid",
+              password: process.env.CMS_TEST_PASSWORD,
+            },
+          })
+        ).ok(),
+      ).toBe(true);
+      expect(
+        (
+          await event.post("/api/homepage-layout", {
+            data: {
+              items: [
+                {
+                  id: changed.id,
+                  version: changed.version,
+                  order: 0,
+                  enabled: true,
+                },
+              ],
+            },
+          })
+        ).ok(),
+      ).toBe(false);
+    } finally {
+      await event.dispose();
+    }
+  } finally {
+    for (const original of originals) {
+      const current = await db.content.findUniqueOrThrow({
+        where: { id: original.id },
+      });
+      await admin.post("/api/content", {
+        data: { ...original, version: current.version },
+      });
+    }
+  }
 });

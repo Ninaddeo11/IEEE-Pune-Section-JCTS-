@@ -6,6 +6,7 @@ import { buildView } from "./view";
 import { pageHtml } from "./html";
 import { entries } from "../lib/db";
 import { publicCollection } from "../lib/content";
+import * as homepageLayout from "./routes/homepage-layout";
 import * as auth from "./routes/auth";
 import * as content from "./routes/content";
 import * as media from "./routes/media";
@@ -17,6 +18,7 @@ import * as revisions from "./routes/revisions";
 import * as account from "./routes/account";
 type Handler = (request: Request) => Promise<Response>;
 const routes: Record<string, Record<string, Handler>> = {
+  "homepage-layout": homepageLayout,
   auth,
   content,
   media,
@@ -148,12 +150,9 @@ app.use(async (req, res, next) => {
         res.setHeader("Set-Cookie", context.setCookies);
       res.send(Buffer.from(await response.arrayBuffer()));
     } catch {
-      res
-        .status(500)
-        .json({
-          error:
-            "Unable to load data. Check the server and database connection.",
-        });
+      res.status(500).json({
+        error: "Unable to load data. Check the server and database connection.",
+      });
     }
   });
 });

@@ -3,6 +3,7 @@ import { useRouter } from "@/client/router";
 import { slugify, statuses, publicCollection, type Entry } from "@/lib/content";
 import { permits, assertTransition } from "@/lib/policy";
 import { localInput } from "@/lib/dates";
+import ActivityWorkspace from "./activity-workspace";
 import AssetUpload from "./asset-upload";
 import Revisions from "./revisions";
 import ModuleFields from "./module-fields";
@@ -303,6 +304,74 @@ export default function Editor({
     }
   }
   const linkedMedia = assets.filter((m) => m.mime.startsWith("image/"));
+  if (item.collection === "activities")
+    return (
+      <>
+        <ActivityWorkspace
+          item={item}
+          setItem={setItem}
+          extra={extra}
+          setExtra={setExtra}
+          assets={assets}
+          setAssets={setAssets}
+          actor={actor}
+          categories={categories}
+          records={records}
+          readOnly={readOnly}
+          busy={busy}
+          error={error}
+          saved={saved}
+          allowedStatuses={allowedStatuses}
+          save={save}
+          recovered={draftNotice}
+          onDiscard={() => {
+            setItem(initial);
+            setExtra(JSON.stringify(initial.data, null, 2));
+            localStorage.removeItem(key);
+            setDraftNotice(false);
+          }}
+          onDelete={async () => {
+            if (
+              !confirm(
+                "Permanently delete this content? This cannot be undone.",
+              )
+            )
+              return;
+            setBusy(true);
+            try {
+              const response = await fetch("/api/content", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: item.id, version: item.version }),
+              });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error);
+              localStorage.removeItem(key);
+              router.push("/admin/activities");
+              router.refresh();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Delete failed");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        {item.id && !readOnly && (
+          <Revisions
+            id={item.id}
+            onRestore={(old) => {
+              setItem({
+                ...old,
+                id: item.id,
+                version: item.version,
+                status: "DRAFT",
+              });
+              setExtra(JSON.stringify(old.data, null, 2));
+            }}
+          />
+        )}
+      </>
+    );
   return (
     <>
       <div className="admin-heading">

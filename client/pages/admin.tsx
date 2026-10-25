@@ -11,6 +11,7 @@ import Dashboard from "@/components/admin/dashboard";
 import Media from "@/components/admin/media";
 import Users from "@/components/admin/users";
 import Messages from "@/components/admin/messages";
+import HomepageBuilder from "@/components/admin/homepage-builder";
 import Account from "@/components/admin/account";
 export default function Admin() {
   const v = useView();
@@ -22,6 +23,8 @@ export default function Admin() {
       <Dashboard />
     ) : v.section === "activities" && !v.record ? (
       <Activities />
+    ) : v.section === "homepage" && !v.record ? (
+      <HomepageBuilder records={v.records} actor={v.actor} />
     ) : v.section === "media" ? (
       <Media
         items={v.media}

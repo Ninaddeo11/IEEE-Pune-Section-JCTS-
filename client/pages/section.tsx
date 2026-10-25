@@ -1,3 +1,4 @@
+import AboutStory from "@/components/about-story";
 import { Suspense } from "react";
 import RichText from "@/components/rich-text";
 import { safeUrl } from "@/lib/urls";
@@ -47,44 +48,7 @@ export default function SectionPage() {
           </section>
         )}
         {section === "about" && (
-          <section className="listing-section">
-            <div className="about-grid">
-              <div>
-                <h2 style={{ whiteSpace: "pre-line" }}>
-                  {String(cmsPage?.data.subheading ?? title)}
-                </h2>
-                <p className="lead">{settings?.summary}</p>
-                <div className="muted">
-                  {cmsPage?.data.richText ? (
-                    <RichText document={cmsPage.data.richText} />
-                  ) : (
-                    <p>{cmsPage?.body}</p>
-                  )}
-                </div>
-              </div>
-              <div>
-                <h3>Our mission</h3>
-                <p className="muted">{String(data.mission ?? "")}</p>
-                <h3>Our vision</h3>
-                <p className="muted">{String(data.vision ?? "")}</p>
-                <Link className="text-link" href="/leadership">
-                  Meet the leadership <Arrow />
-                </Link>
-              </div>
-            </div>
-            {Boolean(cmsPage?.data.ctaHeading) && (
-              <div className="join-panel" style={{ marginTop: 40 }}>
-                <h2>{String(cmsPage?.data.ctaHeading)}</h2>
-                <p>{String(cmsPage?.data.ctaDescription ?? "")}</p>
-                <Link
-                  href={safeUrl(cmsPage?.data.ctaUrl, "/contact")}
-                  className="button"
-                >
-                  {String(cmsPage?.data.ctaText ?? "Get involved")} <Arrow />
-                </Link>
-              </div>
-            )}
-          </section>
+          <AboutStory page={cmsPage} settings={settings} all={all} />
         )}
         {section === "membership" && (
           <section className="listing-section">

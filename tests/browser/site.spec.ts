@@ -32,7 +32,9 @@ test("homepage renders without page errors or horizontal overflow", async ({
   await expect(
     page.getByRole("link", { name: "Explore activities", exact: true }),
   ).toBeVisible();
-  for (const section of await page.locator("main>section").all()) {
+  for (const section of await page
+    .locator("main .home-module > section")
+    .all()) {
     await section.scrollIntoViewIfNeeded();
     await page.waitForTimeout(120);
   }
@@ -148,4 +150,29 @@ test("search dialog and mobile menu support keyboard interaction", async ({
       .click();
     await expect(page).toHaveURL(/\/leadership$/);
   }
+});
+
+test("knowledge network supports keyboard focus and the scroll narrative is readable", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  const research = page.getByRole("button", {
+    name: "04 Research",
+    exact: true,
+  });
+  await research.focus();
+  await expect(research).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".network-readout")).toContainText(
+    "Questions that move us forward.",
+  );
+  const story = page.getByRole("region", {
+    name: "Technology, research, community and impact",
+  });
+  await story.scrollIntoViewIfNeeded();
+  await story.getByRole("button", { name: /04.*Impact/ }).click();
+  await expect(
+    story.getByRole("button", { name: /04.*Impact/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".webgl-scene")).toHaveCount(0);
 });

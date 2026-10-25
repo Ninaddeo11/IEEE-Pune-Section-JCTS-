@@ -1,6 +1,7 @@
 import Link from "@/client/router";
 import { useView } from "@/client/view";
-import { ContentCard, EmptyState } from "./ui";
+import { ActivityEditorial } from "./editorial-collection";
+import { EmptyState } from "./ui";
 export default function ActivityResults() {
   const { query, result, categories } = useView();
   const href = (changes: Record<string, string>) => {
@@ -85,11 +86,7 @@ export default function ActivityResults() {
         {result.total} {result.total === 1 ? "result" : "results"}
       </p>
       {result.items.length ? (
-        <div className="cards-grid">
-          {result.items.map((e, i) => (
-            <ContentCard key={e.id} item={e} index={i} />
-          ))}
-        </div>
+        <ActivityEditorial items={result.items} />
       ) : (
         <EmptyState title="No matching activities." />
       )}

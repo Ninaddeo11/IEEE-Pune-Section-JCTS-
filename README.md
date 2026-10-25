@@ -107,3 +107,13 @@ npm.cmd run test:browser:production
 The CMS suite starts disposable PostgreSQL plus the real React/Express stack on ports 3001/4001. It never uses Supabase for mutations. Browser suites start and stop their own frontend/backend with seed-only public content on port 3000; stop your development server first. Tests cover activity approval/publication, previews, access, media, revisions, concurrency, grants, pagination, timezone backfill, accessibility, mobile navigation and reduced motion.
 
 Non-activity collection listings retain their client filtering. Session/revision/rate-limit retention, email recovery, MFA and a stricter nonce-based CSP remain separate operational improvements.
+
+## Connected intelligence visual system
+
+`client/premium.css` extends the shared design tokens with editorial public layouts and the CMS workspace. Homepage module sources select their presentation automatically: activity features and lists, research nodes, journal publication rows, portrait-led leadership, news, opportunities, partner identities and cinematic albums. Published content and module selections remain the source of truth; empty collections do not invent organizational records.
+
+The hero uses a deterministic 384-particle R3F knowledge network with five focus nodes, curved paths, crystalline geometry, pointer/scroll response and keyboard-accessible topic controls. It remains lazy-loaded, DPR-capped and paused outside the viewport. Mobile/reduced-motion visitors receive the CSS visual; the scroll narrative also has keyboard controls and a non-sticky reduced-motion presentation.
+
+The Homepage workspace supports drag/drop and keyboard arrow ordering, enabled states and configuration links. `POST /api/homepage-layout` applies changes transactionally with versions, revisions, permissions and audit logs. A publisher is required to change live sections. The activity editor uses eight keyboard-accessible tabs, a publication inspector and a live preview that renders the same `client/pages/detail.tsx` component used by public routes. Existing private snapshot previews remain available.
+
+No additional database migration or production environment variable is required for these visual/workspace changes. The supplied chapter logo is retained. The brief's example people, research, projects, metrics and dates are not seeded as organizational facts.
