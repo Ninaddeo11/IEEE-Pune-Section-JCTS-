@@ -92,6 +92,17 @@ The build creates `dist/client` (Vite assets) and `dist/server/index.cjs` (Expre
 
 `vercel.json` declares the Vite output and routes dynamic pages/APIs to `api/index.ts`, preserving GitHub -> Vercel -> custom domain deployment. Configure the server environment in Vercel, including pooled PostgreSQL and production object storage. Deployments and custom-domain DNS have not been performed by this migration. HTTPS is required for production session cookies. The reverse proxy must normalize `x-forwarded-for` for rate limits.
 
+## Vercel deployment checklist
+
+1. Import this Git repository in Vercel. Set Root Directory to the repository root (`.`), not `client/`. Use the Vite framework preset, Node.js 22.x, Install Command `npm ci`, Build Command `npm run build`, and Output Directory `dist/client`. The committed `vercel.json` supplies the build/output settings and Express function routing.
+2. In Project Settings → Environment Variables, set `SITE_URL` to the public HTTPS origin and `DATABASE_URL` to your serverless PostgreSQL connection URI. For Supabase, copy the transaction-pooler URI from Connect and configure it for Prisma 6 (including `pgbouncer=true`); retain TLS parameters and URL-encode the password. Keep Preview deployments on a separate database from production.
+3. For CMS uploads, set `STORAGE_DRIVER=s3` and configure `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_PUBLIC_URL`. The public URL must serve objects from that bucket. Local filesystem uploads do not work in production.
+4. Before deploying against a new database, run `npm run db:migrate` with `DATABASE_URL` pointing to its direct or session-mode connection. Run `npm run db:seed` only when you intend to initialize bundled chapter content. Create the initial administrator with `npm run admin:create` and a securely supplied `ADMIN_INITIAL_PASSWORD`. These commands modify the selected database; do not add them to the Vercel build command.
+5. Deploy, then verify `/`, `/activities`, a published activity detail page, `/admin`, `/api/view?path=/`, `/sitemap.xml`, `/robots.txt`, and `/opengraph-image`. Check both a fresh page load and client navigation, administrator login, and an upload if storage is configured. Inspect Vercel Function logs for runtime failures.
+6. Add your domain under Project Settings → Domains and apply the DNS records Vercel displays. Update `SITE_URL` to that HTTPS domain and redeploy after changing environment variables.
+
+The function requires both `dist/client/index.html` and `dist/client/social-card.png`; `includeFiles` packages them. Keep the dynamic-page rewrite to `/api/index` so the backend supplies page data and metadata.
+
 ## Verification
 
 ```powershell

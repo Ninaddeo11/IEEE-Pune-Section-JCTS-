@@ -1,4 +1,6 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist/client",
   "rewrites": [
@@ -25,7 +27,7 @@
   ],
   "functions": {
     "api/index.ts": {
-      "includeFiles": "dist/client/index.html"
+      "includeFiles": "dist/client/{index.html,social-card.png}"
     }
   }
 }
