@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  CHAPTER_ADMIN
+  CONTENT_MANAGER
+  EVENT_MANAGER
+  RESEARCH_MANAGER
+  MEDIA_MANAGER
+  VIEWER
+}
+
+enum Status {
+  DRAFT
+  REVIEW
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  role         Role       @default(VIEWER)
+  active       Boolean    @default(true)
+  sessions     Session[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime   @default(now())
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+}
+
+model Content {
+  id             String   @id @default(cuid())
+  collection     String
+  slug           String
+  title          String
+  summary        String   @default("")
+  body           String   @default("")
+  category       String   @default("")
+  date           String   @default("")
+  endDate        String   @default("")
+  image          String   @default("")
+  imageAlt       String   @default("")
+  featured       Boolean  @default(false)
+  homepage       Boolean  @default(false)
+  status         Status   @default(DRAFT)
+  publishAt      String   @default("")
+  seoTitle       String   @default("")
+  seoDescription String   @default("")
+  data           Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([collection, slug])
+  @@index([collection, status])
+}
+
+model Media {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  key       String
+  mime      String
+  size      Int
+  alt       String
+  folder    String   @default("")
+  tags      String[]
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    String   @default("unread")
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  target    String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+}
+
+model RateLimit {
+  key       String   @id
+  count     Int      @default(1)
+  expiresAt DateTime
+}
+
+model ContentPreview {
+  id         String   @id @default(cuid())
+  userId     String
+  collection String
+  slug       String
+  payload    Json
+  expiresAt  DateTime
+
+  @@index([expiresAt])
+}
