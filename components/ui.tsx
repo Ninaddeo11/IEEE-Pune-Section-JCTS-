@@ -1,4 +1,6 @@
-import Link from "next/link";
+import { safeUrl } from "@/lib/urls";
+import MediaImage from "./media-image";
+import Link from "@/client/router";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -82,69 +84,100 @@ export function ContentCard({
   index?: number;
 }) {
   return (
-    <Link
-      className="content-card"
-      href={`/${publicCollection(item.collection)}/${item.slug}`}
-    >
-      <div className="card-visual">
-        {item.image ? (
-          <div
-            role="img"
-            aria-label={item.imageAlt}
-            className="cover-image"
-            style={{
-              backgroundImage: `url(${JSON.stringify(item.image).slice(1, -1)})`,
-            }}
-          />
-        ) : (
-          <Artwork variant={index} />
-        )}
-        <span className="category-badge">
-          {item.category || item.collection}
-        </span>
-        <span className="card-arrow">
-          <Arrow diagonal />
-        </span>
-      </div>
-      <div className="card-copy">
-        <p className="metadata">
-          {item.date
-            ? new Date(`${item.date}T12:00:00`).toLocaleDateString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })
-            : "JCTS PUNE SECTION"}
-          <span>↗</span>
-        </p>
-        <h3>{item.title}</h3>
-        {item.collection === "opportunities" &&
-          typeof item.data.deadline === "string" &&
-          item.data.deadline && (
-            <p className="deadline-badge">
-              {new Date(item.data.deadline) < new Date()
-                ? "Applications closed"
-                : "Apply by"}{" "}
-              · {item.data.deadline}
+    <article className="content-card">
+      <Link href={`/${publicCollection(item.collection)}/${item.slug}`}>
+        <div className="card-visual">
+          {item.image ? (
+            <MediaImage src={item.image} alt={item.imageAlt} />
+          ) : (
+            <Artwork variant={index} />
+          )}
+          <span className="category-badge">
+            {item.category || item.collection}
+          </span>
+          <span className="card-arrow">
+            <Arrow diagonal />
+          </span>
+        </div>
+        <div className="card-copy">
+          <p className="metadata">
+            {item.date
+              ? new Date(`${item.date}T12:00:00`).toLocaleDateString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                })
+              : "JCTS PUNE SECTION"}
+            <span>↗</span>
+          </p>
+          <h3>{item.title}</h3>
+          {item.collection === "opportunities" &&
+            typeof item.data.deadline === "string" &&
+            item.data.deadline && (
+              <p className="deadline-badge">
+                {new Date(item.data.deadline) < new Date()
+                  ? "Applications closed"
+                  : "Apply by"}{" "}
+                · {item.data.deadline}
+              </p>
+            )}
+          {item.collection === "leadership" &&
+            Boolean(item.data.designation) && (
+              <p className="people-designation">
+                {String(item.data.designation)}
+                {item.data.organization
+                  ? ` · ${String(item.data.organization)}`
+                  : ""}
+              </p>
+            )}
+          {item.collection === "publications" && Boolean(item.data.authors) && (
+            <p className="publication-authors">
+              {String(item.data.authors)} ·{" "}
+              {String(item.data.year ?? item.date.slice(0, 4))}
             </p>
           )}
-        {item.collection === "leadership" && Boolean(item.data.designation) && (
-          <p className="people-designation">
-            {String(item.data.designation)}
-            {item.data.organization
-              ? ` · ${String(item.data.organization)}`
-              : ""}
-          </p>
+          {item.collection === "activities" && (
+            <div className="activity-card-meta">
+              <p>
+                {[
+                  item.data.startTime,
+                  item.data.timezone,
+                  item.data.venue,
+                  item.data.format,
+                ]
+                  .filter(Boolean)
+                  .map(String)
+                  .join(" | ")}
+              </p>
+              {Boolean(item.data.registrationStatus) && (
+                <span className="deadline-badge">
+                  {String(item.data.registrationStatus)}
+                </span>
+              )}
+              {Boolean(item.data.registrationUrl) && (
+                <span className="text-link">Registration details ?</span>
+              )}
+            </div>
+          )}
+          <p>{item.summary}</p>
+        </div>
+      </Link>
+      {item.collection === "activities" &&
+        Boolean(item.data.registrationUrl) && (
+          <div className="card-registration">
+            <a
+              className="button secondary small"
+              href={safeUrl(item.data.registrationUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {["Closed", "Full"].includes(String(item.data.registrationStatus))
+                ? "Registration information"
+                : "Register"}
+            </a>
+          </div>
         )}
-        {item.collection === "publications" && Boolean(item.data.authors) && (
-          <p className="publication-authors">
-            {String(item.data.authors)} ·{" "}
-            {String(item.data.year ?? item.date.slice(0, 4))}
-          </p>
-        )}
-        <p>{item.summary}</p>
-      </div>
-    </Link>
+    </article>
   );
 }
 export const focusIcons = [

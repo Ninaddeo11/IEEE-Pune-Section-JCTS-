@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zonedInstant } from "./dates";
 import { collections, roles, statuses } from "./content";
 type RichNode = {
   type: string;
@@ -65,6 +66,125 @@ export const contentSchema = z
   })
   .superRefine((v, ctx) => {
     if (
+      v.publishAt &&
+      (!/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/.test(v.publishAt) ||
+        !Number.isFinite(Date.parse(v.publishAt)))
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["publishAt"],
+        message: "Publication time requires an explicit timezone",
+      });
+    if (v.collection === "activities") {
+      if (
+        v.data.people !== undefined &&
+        !z
+          .array(
+            z.object({
+              personId: z.string().min(1),
+              role: z.enum([
+                "Speaker",
+                "Organizer",
+                "Coordinator",
+                "Partner",
+                "Host",
+              ]),
+            }),
+          )
+          .max(100)
+          .safeParse(v.data.people).success
+      )
+        ctx.addIssue({
+          code: "custom",
+          message: "Select valid people and roles",
+        });
+      for (const field of [
+        "speakers",
+        "organizers",
+        "coordinators",
+        "partners",
+        "hosts",
+        "schedule",
+        "highlights",
+        "outcomes",
+        "tags",
+        "sdgs",
+      ])
+        if (
+          v.data[field] !== undefined &&
+          !z
+            .array(
+              z.union([
+                z.string().max(2000),
+                z.record(z.string(), z.string().max(2000)),
+              ]),
+            )
+            .max(200)
+            .safeParse(v.data[field]).success
+        )
+          ctx.addIssue({
+            code: "custom",
+            message: `${field} must contain bounded text entries`,
+          });
+
+      try {
+        for (const field of ["startTime", "endTime"])
+          if (
+            v.data[field] &&
+            !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v.data[field]))
+          )
+            throw new Error("Use HH:mm event times");
+        new Intl.DateTimeFormat("en", {
+          timeZone: String(v.data.timezone || "Asia/Kolkata"),
+        });
+        if (v.date)
+          zonedInstant(
+            v.date,
+            String(v.data.startTime || "00:00"),
+            String(v.data.timezone || "Asia/Kolkata"),
+          );
+        if (
+          v.data.capacity &&
+          (!Number.isInteger(Number(v.data.capacity)) ||
+            Number(v.data.capacity) < 0)
+        )
+          throw new Error("Capacity must be a nonnegative integer");
+        if (
+          v.data.format &&
+          !["Online", "Offline", "Hybrid"].includes(String(v.data.format))
+        )
+          throw new Error("Choose Online, Offline or Hybrid");
+        if (
+          v.data.registrationStatus &&
+          !["Open", "Closed", "Coming soon", "Full", "Not required"].includes(
+            String(v.data.registrationStatus),
+          )
+        )
+          throw new Error("Choose a valid registration status");
+      } catch (e) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["data"],
+          message: e instanceof Error ? e.message : "Invalid event logistics",
+        });
+      }
+    }
+    if (v.collection === "homepage") {
+      if (v.data.order !== undefined && !Number.isFinite(Number(v.data.order)))
+        ctx.addIssue({
+          code: "custom",
+          message: "Section order must be numeric",
+        });
+      if (
+        v.data.itemCount !== undefined &&
+        (!Number.isInteger(Number(v.data.itemCount)) ||
+          Number(v.data.itemCount) < 1 ||
+          Number(v.data.itemCount) > 24)
+      )
+        ctx.addIssue({ code: "custom", message: "Item count must be 1?24" });
+    }
+
+    if (
       v.data.richText !== undefined &&
       !richNode.safeParse(v.data.richText).success
     )
@@ -104,7 +224,7 @@ export const contentSchema = z
       });
     for (const [key, value] of Object.entries(v.data)) {
       if (
-        /(url|link|pdf)$/i.test(key) &&
+        /(url|link|pdf|thumbnail)$/i.test(key) &&
         typeof value === "string" &&
         !url.safeParse(value).success
       )

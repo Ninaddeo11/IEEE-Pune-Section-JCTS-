@@ -1,92 +1,109 @@
 # IEEE JCTS Pune Chapter
 
-A Next.js App Router application for the Joint Chapter of IEEE Technology and Engineering Management Society & IEEE Systems Council, Pune Section.
+A React 19 + TypeScript website and administrator CMS, built with Vite. A separate Express 5 backend provides authenticated APIs and PostgreSQL access through Prisma. Next.js is no longer a dependency or runtime.
 
-The public website and administrator workspace live in the same application. Content is read from PostgreSQL through Prisma. With no `DATABASE_URL`, the public website renders the supplied 2026 source records in read-only mode; CMS login and contact submission explicitly require database setup. Configuring a database switches reads to that database; run the seed once to populate it.
+## Architecture
 
-## Run locally
+- `client/`: React entry point, React Router navigation, page-data context, public/admin pages and styles.
+- `components/`: reusable public components, CMS editors, media tools, Tiptap, motion and lazy-loaded Three.js.
+- `server/`: Express application, request-scoped sessions, page-data queries, metadata and API handlers.
+- `api/index.ts`: serverless Express entry point for Vercel.
+- `lib/`: shared content/policy/date helpers plus server-only database, storage and authentication services.
+- `prisma/`: existing schema, additive migrations and non-destructive content seed.
+- `tests/`: unit tests, desktop/mobile browser checks and isolated PostgreSQL CMS tests.
 
-Requires Node.js 22.12+ and PostgreSQL 17+. On Windows, use `npm.cmd` / `npx.cmd` if PowerShell restricts npm scripts.
+Browser code never connects directly to PostgreSQL or imports Prisma, authentication secrets, filesystem storage or database services. Public React pages load JSON through `/api/view`; content mutations retain the existing `/api/*` routes. The server supplies initial page data and per-route HTML metadata, canonical URLs, social images and JSON-LD. React renders page content in the browser; this is a client-rendered application, without React Server Components.
+
+## Local development
+
+Requires Node.js 22.12+ and PostgreSQL (local or Supabase). On Windows use `npm.cmd` when PowerShell blocks npm scripts.
 
 ```powershell
 npm.cmd ci
-Copy-Item .env.example .env
-# Edit DATABASE_URL in .env to point to your PostgreSQL database.
+# For a new checkout only: copy .env.example to .env and fill in your database URL.
+npx.cmd prisma generate
 npm.cmd run db:migrate
 npm.cmd run db:seed
 npm.cmd run dev
 ```
 
-Visit `http://localhost:3000`. To start the optional development PostgreSQL container, set a unique `POSTGRES_PASSWORD` environment variable, run `docker compose up -d`, and use matching `jcts` credentials in `DATABASE_URL`. Docker Desktop must be running. No database or production service is provisioned automatically.
+`npm run dev` starts Vite at **http://127.0.0.1:3000** and the separate backend at **http://127.0.0.1:4000**. Vite proxies API/media requests to the backend. Explicit IPv4 addresses avoid unrelated Docker services that may occupy IPv6 localhost ports. Both processes are stopped with Ctrl+C. Individual commands are `npm run dev:client` and `npm run dev:server`; restart the combined command after changing backend code.
 
-## Create the first administrator
-
-There are no default credentials and no public sign-up. Set `ADMIN_INITIAL_PASSWORD` in your shell to a unique password of at least 12 characters, then run:
+Open `/admin` for administrator login. The initial administrator is created separately:
 
 ```powershell
+# Set ADMIN_INITIAL_PASSWORD securely in your shell (12+ characters).
 npm.cmd run admin:create
-Remove-Item Env:ADMIN_INITIAL_PASSWORD
+# Clear ADMIN_INITIAL_PASSWORD from your shell afterward.
 ```
 
-The command prompts for the administrator's email and name, hashes the password with bcrypt, and creates a `SUPER_ADMIN`. Sign in at `/admin`. Super administrators can create and enable/disable other users under **Users**. Share initial passwords privately. Disabling an account revokes its sessions.
+There are no default credentials, public sign-ups or shared accounts. Existing Supabase content, administrators and bcrypt hashes are unchanged by this framework migration.
 
-## CMS workflow
+Without `DATABASE_URL`, public pages use bundled approved source records. CMS login and contact submissions require the database. A configured database is the source of truth and must be migrated/seeded; an unavailable configured database produces a visible error rather than silently falling back to demo content.
 
-The sidebar manages activities, research, publications, news, announcements, opportunities, resources, leadership, partners, albums, documents, media, homepage sections, focus areas, statistics, navigation, FAQs, settings, users, messages and audit records.
+## Environment
 
-1. Create a record and set its unique slug, category and dates.
-2. Write the description with the rich-text editor. Edit speakers, organizers, highlights, schedule and outcomes using their individual fields. Gallery assets can be selected from the media library. An advanced JSON editor supports additional structured fields.
-3. Upload media separately and choose an existing hero image. Images require alt text. The media library supports folders, tags, metadata edits, replacement in place and deletion. Referenced assets cannot be deleted.
-4. Save a draft, request review, schedule publication, publish or archive. **Preview changes** creates a private snapshot that expires after one hour and is bound to your administrator account. It opens the public design without altering the published record. Drafts and future scheduled records stay out of public listings, search, sitemap and unauthenticated detail routes.
-5. Featured records with **Show on homepage** appear in their homepage features. Future years require content changes only. Scheduled records become public on the first request at or after their scheduled time; no cron task is needed.
+Keep `.env` and `.env.local` out of Git. `.env.local` has precedence over `.env`; explicit process environment values have precedence over both.
 
-Editors keep an automatic recovery copy in the browser. Existing drafts also autosave to the database after an editing pause. Recovery copies are device-local and should not be used on shared devices. Clear browser storage after using a shared workstation.
+| Variable                                                    | Purpose                                                                                                     |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                              | Server-only PostgreSQL connection; URL-encode password characters and use TLS for Supabase.                 |
+| `SITE_URL`                                                  | Canonical public origin, including HTTPS in production. Replaces the former `NEXT_PUBLIC_SITE_URL` setting. |
+| `API_PORT` / `PORT`                                         | Backend listening port (default 4000).                                                                      |
+| `WEB_PORT`                                                  | Vite development port (default 3000).                                                                       |
+| `STORAGE_DRIVER`                                            | `local` for development, `s3` for production.                                                               |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`                     | S3-compatible object storage.                                                                               |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL` | Server-only storage credentials and public asset base.                                                      |
 
-Homepage → `hero` controls the main title, description and CTA. Other homepage records control section titles, summaries and visibility; unpublish a section record to hide it. Focus areas have their own ordered collection. Statistics override the homepage EU-REKA snapshot when published. Navigation items support ordering, visibility and a parent slug for dropdown grouping. Settings → `chapter` controls the mission, vision, contact details and footer text.
+No browser environment variable needs database credentials or an administrator password. Do not put secrets in Vite-prefixed variables. Supabase direct endpoints require IPv6 unless the IPv4 add-on is enabled. For IPv4-only hosts use the exact session-pooler URI from Supabase's Connect panel; for serverless hosting configure the appropriate transaction pooler for Prisma 6. Apply migrations through a direct or session-mode connection, rather than the transaction pooler.
 
-**Pages** controls informational page copy, section headings and SEO, including About, Membership, Contact, Privacy and Terms. Create a published page with a new slug to add an informational route. About and Membership expose CTA fields; Membership's structured `cards` array controls its three introductory cards. Documents appear in Resources and announcements appear in News.
+Supabase is used as PostgreSQL, with custom CMS sessions; Supabase Auth/browser keys are not required. Migration `202610250002_server_only_access` enables RLS and revokes direct table access from `anon` and `authenticated`. The backend's database role must retain its table access. Do not open browser access without designing explicit policies.
 
-Public content routes include `/activities`, `/leadership`, `/research`, `/publications`, `/opportunities`, `/resources`, `/news` and `/gallery`, with slug detail routes. Also included are `/about`, `/membership`, `/contact`, `/search`, `/privacy`, `/terms`, `/robots.txt` and `/sitemap.xml`. Press Ctrl/Cmd+K for search.
+## CMS and publishing
 
-## Architecture
+The CMS manages activities, reusable people, leadership, research, publications, news, announcements, opportunities, resources, documents, gallery, partners, homepage modules, taxonomy, navigation, statistics, FAQs and chapter settings.
 
-- Next.js 16, React 19, strict TypeScript, Tailwind 4, a shadcn-style Radix button primitive, Framer Motion, Tiptap, React Three Fiber / Drei / Three.js.
-- Shared `Content` records provide publication workflow, slugs, dates, search text, SEO, visibility and collection-specific structured data. This implementation deliberately uses a shared content model with JSON extensions rather than a separate Prisma table for every editorial type. Users, sessions, media, messages, rate limits and audit records have separate relational tables.
-- The same repository reads drive listings, search, detail pages, metadata and sitemap. No event arrays live inside page components. Seed data is isolated in `lib/seed-data.ts` and database seeding never overwrites existing edits.
-- HTTP-only random-token sessions are stored as SHA-256 hashes in PostgreSQL, expire after 12 hours, and use secure cookies in production. There is no Google OAuth or password-recovery service configured.
-- Server-side role enforcement covers all mutations. Writes require matching Origin; payloads use Zod validation; public forms and sign-in use database-backed rate limiting. CMS changes are audited with before/after snapshots. Rich-text JSON is rendered as React elements, never raw HTML.
-- The hero uses a dynamically imported WebGL scene. Mobile, reduced-motion and unsupported WebGL clients receive CSS geometry. The scene pauses when out of view. Cards and grids use CSS for low-cost hover feedback.
+- Super administrators manage users, roles, explicit publishing grants and password resets. Self-elevation is blocked and access changes revoke sessions.
+- Chapter administrators manage chapter content, publication and audit views.
+- Event managers create/edit activities and people, upload assets, preview and submit for review; publishing is separately granted.
+- Content/research managers edit their permitted collections and submit for review; they cannot publish by default.
+- Media managers manage assets without editorial publishing access. Viewers have read-only published access.
 
-## Storage and deployment
+The lifecycle supports DRAFT, REVIEW, APPROVED, SCHEDULED, PUBLISHED, COMPLETED and ARCHIVED. Permissions are enforced on the backend, including direct API calls. COMPLETED is public; ARCHIVED is private. Scheduled content becomes visible on public requests after its publication time, without a background job changing its stored status.
 
-`STORAGE_DRIVER=local` writes development assets to `public/uploads`. Production rejects local uploads because serverless filesystems are ephemeral. Set `STORAGE_DRIVER=s3` and the S3-compatible variables from `.env.example` for AWS S3, Cloudflare R2 or another compatible provider. Configure `S3_PUBLIC_URL` to a public/CDN origin serving those files and apply your provider's access and retention policy. Accepted uploads are PNG, JPEG, WebP, PDF and MP4, checked against file signatures and limited to 25 MB.
+Activity calendar dates and IANA timezones produce typed UTC timestamps. Existing date fields and legacy text speakers remain compatible. Reusable people have relational activity participation roles. Categories are managed records; used categories cannot be deleted or renamed without explicitly recategorizing their activities.
 
-For Vercel or a Node host:
+The editor supports rich text, logistics, schedules, SDGs, registration links, statistics, images, video and galleries. Uploads require matching signatures/MIME/extensions, alt text and a 25 MB limit. Local uploads are for development; production requires S3-compatible storage. Uploaded asset URLs are public even when attached to drafts.
 
-1. Provision PostgreSQL and object storage; configure environment variables, HTTPS and the final `NEXT_PUBLIC_SITE_URL`.
-2. Apply migrations with `npm run db:migrate`; seed once; create the initial administrator.
-3. Build with `npm run build`, then use the host's Next.js integration or `npm start`.
-4. Configure database backups, connection pooling, trusted proxy/IP forwarding, logs and alerting. Run the database-backed integration checks in staging before opening CMS access.
+Save a draft, preview the account-bound one-hour snapshot, submit for review and have a publisher approve/publish. Publication automatically feeds listings, search, detail pages, sitemap, upcoming and configured homepage modules. `/activities/{slug}` remains canonical and `/activity/{slug}` redirects to it. Homepage selections are data-driven; no activity slug is hardcoded in the frontend.
 
-## Validation
+Homepage records configure section types, source collections, selection, ordering, item counts, titles, summaries and enabled state. Spotlight supports manual primary/secondary choices. Contact/newsletter modules link to Contact; they do not claim to subscribe visitors to an external service.
+
+Revisions, audited transitions, optimistic version checks, per-user local recovery and existing-draft autosave are preserved. Conflicting saves return 409. The Security screen supports password changes and revoking sessions. Super administrators can reset passwords; email recovery and MFA enrollment are not implemented.
+
+## Production and Vercel
 
 ```powershell
-npm.cmd run lint
-npm.cmd run typecheck
-npm.cmd test
 npm.cmd run build
-# With the application running on port 3000 and Chrome installed:
-npm.cmd run test:browser
-# Isolated PostgreSQL + authenticated CMS tests; does not need a configured database:
-npm.cmd run test:cms
+npm.cmd run start
 ```
 
-Browser tests exercise desktop and mobile rendering, routes, activity filters, search, detail pages, keyboard search, mobile navigation, reduced motion, unauthenticated CMS rejection and automated WCAG 2.2 AA checks. Screenshots are saved to ignored `artifacts/`. Override the Playwright browser channel if your machine does not have Chrome installed. No Lighthouse score is claimed without a measured production run.
+The build creates `dist/client` (Vite assets) and `dist/server/index.cjs` (Express). The production backend serves the React build and APIs on one origin; its internal modules remain separate. Set `NODE_ENV=production` and the canonical `SITE_URL` when running the Node server.
 
-The CMS integration harness starts a temporary, loopback-only PostgreSQL instance on port 55432 and a development server on port 3001. It generates random test credentials in memory, forces local storage and its own database URL, applies the migration, and exercises database CRUD, browser editing, publication, private previews, CMS-driven page/navigation changes, uploads/replacement/reference protection, contact messages, all seven roles and session revocation. Test services stop afterward and database files are removed. Both ports must be available. Test accounts and records exist only in this isolated database.
+`vercel.json` declares the Vite output and routes dynamic pages/APIs to `api/index.ts`, preserving GitHub -> Vercel -> custom domain deployment. Configure the server environment in Vercel, including pooled PostgreSQL and production object storage. Deployments and custom-domain DNS have not been performed by this migration. HTTPS is required for production session cookies. The reverse proxy must normalize `x-forwarded-for` for rate limits.
 
-## Source content and launch requirements
+## Verification
 
-Only the pasted brief was supplied. The initial 16 activity records, dates, named speakers and EU-REKA numbers come from that brief. EU-REKA has no invented event date. Original report attachments, official branding assets, photographs, full PRAXIS speaker details, finale team names, leadership, publication records, partnerships and official contact/social URLs were not provided; these should be added through the CMS after source verification. Abstract artwork is decorative and is not presented as event photography. Mission and vision are preserved verbatim.
+```powershell
+npm.cmd test
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+npm.cmd run test:cms
+npm.cmd run test:browser
+npm.cmd run test:browser:production
+```
 
-Before launch, provide verified content and branding, review privacy/terms and retention requirements, configure real infrastructure, and run staging checks against your database and object store. Local PostgreSQL and local-file workflows have been exercised; production S3 credentials and hosting have not been supplied or tested.
+The CMS suite starts disposable PostgreSQL plus the real React/Express stack on ports 3001/4001. It never uses Supabase for mutations. Browser suites start and stop their own frontend/backend with seed-only public content on port 3000; stop your development server first. Tests cover activity approval/publication, previews, access, media, revisions, concurrency, grants, pagination, timezone backfill, accessibility, mobile navigation and reduced motion.
+
+Non-activity collection listings retain their client filtering. Session/revision/rate-limit retention, email recovery, MFA and a stricter nonce-based CSP remain separate operational improvements.

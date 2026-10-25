@@ -1,4 +1,3 @@
-"use client";
 import { useState } from "react";
 export default function Citation({ text }: { text: string }) {
   const [status, setStatus] = useState("Copy citation");

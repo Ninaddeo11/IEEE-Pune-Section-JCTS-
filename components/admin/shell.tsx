@@ -1,8 +1,9 @@
-"use client";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Brand from "@/components/brand";
+import Link from "@/client/router";
+import { usePathname, useRouter } from "@/client/router";
 import { useState } from "react";
-import { canManage, label } from "@/lib/content";
+import { label } from "@/lib/content";
+import { permits } from "@/lib/policy";
 const groups: Record<string, string[]> = {
   Workspace: ["dashboard"],
   Content: [
@@ -14,7 +15,7 @@ const groups: Record<string, string[]> = {
     "opportunities",
     "resources",
   ],
-  Community: ["leadership", "partners"],
+  Community: ["leadership", "people", "partners", "categories"],
   Media: ["gallery", "media", "documents"],
   Website: [
     "pages",
@@ -40,12 +41,7 @@ export default function AdminShell({
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
-        <Link className="brand" href="/">
-          <span className="brand-symbol">⟐</span>
-          <span>
-            JCTS<span className="brand-sub">CHAPTER WORKSPACE</span>
-          </span>
-        </Link>
+        <Brand />
         <nav aria-label="CMS navigation">
           {Object.entries(groups).map(([group, items]) => (
             <div key={group} style={{ display: "contents" }}>
@@ -54,10 +50,12 @@ export default function AdminShell({
                 .filter(
                   (c) =>
                     c === "dashboard" ||
-                    c === "audit-logs" ||
                     c === "security" ||
-                    user.role === "VIEWER" ||
-                    canManage(user.role, c),
+                    permits(
+                      user,
+                      c === "audit-logs" ? "AUDIT_VIEW" : "READ",
+                      c,
+                    ),
                 )
                 .map((c) => (
                   <Link

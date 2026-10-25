@@ -1,4 +1,7 @@
+import { permits } from "./policy";
 export const collections = [
+  "categories",
+  "people",
   "activities",
   "leadership",
   "research",
@@ -39,6 +42,8 @@ export const categories = [
 export const statuses = [
   "DRAFT",
   "REVIEW",
+  "APPROVED",
+  "COMPLETED",
   "SCHEDULED",
   "PUBLISHED",
   "ARCHIVED",
@@ -54,24 +59,16 @@ export const roles = [
 ] as const;
 export type Role = (typeof roles)[number];
 export function canManage(role: string, collection: string) {
-  if (role === "SUPER_ADMIN") return true;
-  if (role === "CHAPTER_ADMIN")
-    return !["users", "audit-logs", "security"].includes(collection);
-  const allowed: Record<string, string[]> = {
-    CONTENT_MANAGER: [
-      "news",
-      "announcements",
-      "opportunities",
-      "resources",
-      "faqs",
-    ],
-    EVENT_MANAGER: ["activities"],
-    RESEARCH_MANAGER: ["research", "publications"],
-    MEDIA_MANAGER: ["gallery", "media", "documents"],
-  };
-  return allowed[role]?.includes(collection) ?? false;
+  return permits(
+    { role },
+    collection === "media" ? "MEDIA_UPLOAD" : "UPDATE",
+    collection,
+  );
 }
 export type Entry = {
+  version?: number;
+  createdBy?: string;
+  updatedAt?: string;
   id: string;
   collection: string;
   slug: string;
@@ -123,7 +120,7 @@ export function visible(
   now = new Date(),
 ) {
   return (
-    e.status === "PUBLISHED" ||
+    ["PUBLISHED", "COMPLETED"].includes(e.status) ||
     (e.status === "SCHEDULED" && !!e.publishAt && new Date(e.publishAt) <= now)
   );
 }

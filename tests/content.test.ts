@@ -135,3 +135,155 @@ test("upload signatures reject executable and SVG content", () => {
   );
   assert.equal(detectedType(Buffer.from("%PDF-1.7"))?.mime, "application/pdf");
 });
+
+import { permits, assertTransition, readable } from "../lib/policy";
+import { zonedInstant, upcoming } from "../lib/dates";
+import { moduleItems } from "../lib/modules";
+test("publishing is separate from editing and media access", () => {
+  assert.equal(
+    permits({ role: "EVENT_MANAGER" }, "MEDIA_UPLOAD", "media"),
+    true,
+  );
+  assert.equal(permits({ role: "EVENT_MANAGER" }, "DELETE", "media"), false);
+  assert.doesNotThrow(() =>
+    assertTransition(
+      { role: "EVENT_MANAGER" },
+      "activities",
+      "DRAFT",
+      "REVIEW",
+    ),
+  );
+  assert.throws(() =>
+    assertTransition(
+      { role: "EVENT_MANAGER" },
+      "activities",
+      "REVIEW",
+      "PUBLISHED",
+    ),
+  );
+  assert.throws(() =>
+    assertTransition({ role: "CONTENT_MANAGER" }, "news", "DRAFT", "PUBLISHED"),
+  );
+  assert.doesNotThrow(() =>
+    assertTransition(
+      { role: "CHAPTER_ADMIN" },
+      "activities",
+      "REVIEW",
+      "APPROVED",
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertTransition(
+      { role: "EVENT_MANAGER", permissions: ["activities:PUBLISH"] },
+      "activities",
+      "APPROVED",
+      "SCHEDULED",
+    ),
+  );
+  assert.equal(
+    permits({ role: "MEDIA_MANAGER" }, "UPDATE", "activities"),
+    false,
+  );
+  assert.equal(
+    readable(
+      { role: "VIEWER" },
+      { collection: "activities", status: "DRAFT", publishAt: "" },
+    ),
+    false,
+  );
+  assert.equal(permits({ role: "VIEWER" }, "READ", "users"), false);
+  assert.equal(permits({ role: "EVENT_MANAGER" }, "READ", "research"), false);
+});
+test("timezone conversion handles chapter time and DST gaps", () => {
+  assert.equal(
+    zonedInstant("2026-11-15", "10:00", "Asia/Kolkata")?.toISOString(),
+    "2026-11-15T04:30:00.000Z",
+  );
+  assert.equal(
+    zonedInstant("2026-07-01", "10:00", "Europe/London")?.toISOString(),
+    "2026-07-01T09:00:00.000Z",
+  );
+  assert.throws(() => zonedInstant("2026-03-29", "01:30", "Europe/London"));
+  assert.equal(
+    upcoming({ ...blankEntry, date: "2026-11-15" }, new Date("2026-10-25")),
+    true,
+  );
+  assert.equal(
+    upcoming(
+      { ...blankEntry, date: "2026-11-15", status: "COMPLETED" },
+      new Date("2026-10-25"),
+    ),
+    false,
+  );
+});
+test("homepage selections are data-driven and ordered by event date", () => {
+  const all = [
+    {
+      ...blankEntry,
+      id: "later",
+      date: "2027-02-01",
+      featured: true,
+      homepage: false,
+    },
+    {
+      ...blankEntry,
+      id: "first",
+      date: "2027-01-01",
+      featured: false,
+      homepage: true,
+    },
+  ];
+  const homeSection = {
+    ...blankEntry,
+    collection: "homepage",
+    data: { source: "activities", selection: "upcoming", itemCount: 2 },
+  };
+  assert.deepEqual(
+    moduleItems(homeSection, all, new Date("2026-10-25")).map((e) => e.id),
+    ["first", "later"],
+  );
+  assert.deepEqual(
+    moduleItems(
+      { ...homeSection, data: { source: "activities", selection: "homepage" } },
+      all,
+    ).map((e) => e.id),
+    ["first"],
+  );
+  assert.deepEqual(
+    moduleItems(
+      {
+        ...homeSection,
+        data: {
+          source: "activities",
+          selection: "manual",
+          selectedIds: ["later", "first"],
+        },
+      },
+      all,
+    ).map((e) => e.id),
+    ["later", "first"],
+  );
+});
+test("event logistics and homepage settings are validated", () => {
+  const item = {
+    ...blankEntry,
+    title: "Valid activity",
+    slug: "valid-activity",
+  };
+  for (const data of [
+    { startTime: "25:00" },
+    { timezone: "Invalid/Zone" },
+    { capacity: -1 },
+    { format: "Unknown" },
+    { people: [{ personId: "x", role: "Invalid" }] },
+  ])
+    assert.equal(contentSchema.safeParse({ ...item, data }).success, false);
+  assert.equal(
+    contentSchema.safeParse({
+      ...item,
+      collection: "homepage",
+      data: { itemCount: 1000 },
+    }).success,
+    false,
+  );
+});

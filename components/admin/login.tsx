@@ -1,7 +1,7 @@
-"use client";
-import Link from "next/link";
+import Brand from "@/components/brand";
+import Link from "@/client/router";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/client/router";
 export default function Login({ configured }: { configured: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -29,12 +29,7 @@ export default function Login({ configured }: { configured: boolean }) {
   return (
     <main id="main" className="login-page">
       <div className="login-story">
-        <Link className="brand" href="/">
-          <span className="brand-symbol">⟐</span>
-          <span>
-            JCTS<span className="brand-sub">IEEE PUNE SECTION</span>
-          </span>
-        </Link>
+        <Brand />
         <h1>
           The ideas start here.
           <br />
@@ -43,6 +38,9 @@ export default function Login({ configured }: { configured: boolean }) {
         <p>THE JCTS CHAPTER WORKSPACE</p>
       </div>
       <div className="login-form">
+        <div className="login-mobile-brand">
+          <Brand />
+        </div>
         <p className="eyebrow">CHAPTER ADMINISTRATION</p>
         <h2>Welcome back.</h2>
         <p>Sign in to manage your chapter’s digital presence.</p>

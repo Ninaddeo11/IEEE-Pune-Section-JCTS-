@@ -4,7 +4,7 @@ export default defineConfig({
   timeout: 30000,
   fullyParallel: false,
   workers: 1,
-  use: { baseURL: "http://localhost:3000", channel: "chrome", headless: true },
+  use: { baseURL: "http://127.0.0.1:3000", channel: "chrome", headless: true },
   projects: [
     { name: "desktop", use: { viewport: { width: 1440, height: 1000 } } },
     {

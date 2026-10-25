@@ -1,6 +1,5 @@
-"use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/client/router";
 type Message = {
   id: string;
   name: string;

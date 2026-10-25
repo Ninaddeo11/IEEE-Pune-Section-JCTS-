@@ -52,10 +52,13 @@ test("homepage renders without page errors or horizontal overflow", async ({
 });
 test("activity filters, search and details work", async ({ page }) => {
   await page.goto("/activities");
-  await page.getByRole("button", { name: "Humanitarian", exact: true }).click();
+  await page.getByRole("link", { name: "Humanitarian", exact: true }).click();
   await expect(page.getByText("2 results", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.getByRole("link", { name: "All", exact: true }).click();
   await page.getByRole("searchbox").fill("Campus to Corporate");
+  await page
+    .getByRole("button", { name: "Apply filters", exact: true })
+    .click();
   await expect(page.getByText("1 result", { exact: true })).toBeVisible();
   await page
     .getByRole("heading", { name: "Campus to Corporate", exact: true })
@@ -111,7 +114,7 @@ test("admin routes and writes require authentication", async ({
   ).toBeVisible();
   for (const endpoint of ["/api/content", "/api/media", "/api/users"]) {
     const result = await request.post(endpoint, {
-      headers: { Origin: "http://localhost:3000" },
+      headers: { Origin: "http://127.0.0.1:3000" },
       data: {},
     });
     expect(result.status()).toBeGreaterThanOrEqual(400);

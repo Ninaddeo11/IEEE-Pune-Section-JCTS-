@@ -1,9 +1,8 @@
-"use client";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "@/client/router";
 import { Search } from "lucide-react";
 import type { Entry } from "@/lib/content";
-import { categories } from "@/lib/content";
+
 import { ContentCard, EmptyState } from "./ui";
 export default function Listing({
   items,
@@ -23,12 +22,12 @@ export default function Listing({
   ]
     .sort()
     .reverse();
-  const cats =
-    collection === "activities"
-      ? categories
-      : [...new Set(items.map((e) => e.category).filter(Boolean))];
+  const cats = [...new Set(items.map((e) => e.category).filter(Boolean))];
+  const [format, setFormat] = useState("");
   const filtered = items.filter(
     (e) =>
+      (!format || e.data.format === format) &&
+      (!format || e.data.format === format) &&
       (category === "All" ||
         e.category === category ||
         (Array.isArray(e.data.tags) && e.data.tags.includes(category))) &&
@@ -83,6 +82,36 @@ export default function Listing({
           Featured
         </label>
       </div>
+      {collection === "activities" && (
+        <label>
+          Format
+          <select value={format} onChange={(e) => setFormat(e.target.value)}>
+            <option value="">All formats</option>
+            {[
+              ...new Set(
+                items.map((e) => String(e.data.format || "")).filter(Boolean),
+              ),
+            ].map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {collection === "activities" && (
+        <label>
+          Format
+          <select value={format} onChange={(e) => setFormat(e.target.value)}>
+            <option value="">All formats</option>
+            {[
+              ...new Set(
+                items.map((e) => String(e.data.format || "")).filter(Boolean),
+              ),
+            ].map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="chips">
         {["All", ...cats].map((cat) => (
           <button

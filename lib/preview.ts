@@ -1,18 +1,20 @@
-import { headers } from "next/headers";
+import { requestContext } from "../server/context";
 import { currentUser } from "./auth";
 import { db } from "./db";
-import { canManage, type Entry } from "./content";
+import { type Entry } from "./content";
+import { permits } from "./policy";
 export async function applyPreview(items: Entry[], token?: string) {
-  const id = token ?? (await headers()).get("x-jcts-preview");
+  const id =
+    token ?? new URL(requestContext().request.url).searchParams.get("preview");
   if (!id) return items;
   const user = await currentUser();
-  if (!user) return items;
+  if (!user || user.role === "VIEWER") return items;
   const snapshot = await db.contentPreview.findUnique({ where: { id } });
   if (
     !snapshot ||
     snapshot.userId !== user.id ||
     snapshot.expiresAt < new Date() ||
-    !canManage(user.role, snapshot.collection)
+    !permits(user, "PREVIEW", snapshot.collection)
   )
     return items;
   const value = { ...(snapshot.payload as unknown as Entry), id: snapshot.id };

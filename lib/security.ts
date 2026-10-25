@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { requestContext } from "../server/context";
 import { db } from "./db";
 export async function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
@@ -14,6 +14,6 @@ export async function rateLimit(key: string, limit: number, seconds: number) {
     throw new Error("Too many requests. Please try again later.");
 }
 export async function clientKey() {
-  const h = await headers();
+  const h = requestContext().request.headers;
   return h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 }

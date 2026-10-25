@@ -13,14 +13,13 @@ if (!databaseDir.startsWith(path.resolve(root, ".test-db") + path.sep))
 const password = randomBytes(24).toString("hex");
 const adminPassword = randomBytes(24).toString("hex");
 const databaseUrl = `postgresql://jcts_test:${password}@127.0.0.1:55432/jcts_test?schema=public`;
-const env:NodeJS.ProcessEnv = {
+const env: NodeJS.ProcessEnv = {
   ...process.env,
   NODE_ENV: "development",
   STORAGE_DRIVER: "local",
   DATABASE_URL: databaseUrl,
   CMS_TEST_PASSWORD: adminPassword,
-  NEXT_PUBLIC_SITE_URL: "http://localhost:3001",
-  NEXT_TELEMETRY_DISABLED: "1",
+  SITE_URL: "http://127.0.0.1:3001",
 };
 const postgres = new EmbeddedPostgres({
   databaseDir,
@@ -54,13 +53,20 @@ async function main() {
   console.log("Starting isolated local PostgreSQL test database…");
   await postgres.initialise();
   await postgres.start();
-  await postgres.createDatabase("jcts_test");
+  const bootstrap = postgres.getPgClient("postgres", "127.0.0.1");
+  await bootstrap.connect();
+  await bootstrap.query('CREATE DATABASE "jcts_test"');
+  await bootstrap.end();
   await run("node_modules/prisma/build/index.js", ["migrate", "deploy"]);
   const db = new PrismaClient({ datasourceUrl: databaseUrl });
   try {
     for (const { id, ...entry } of seedEntries)
-      await db.content.create({
-        data: {
+      await db.content.upsert({
+        where: {
+          collection_slug: { collection: entry.collection, slug: entry.slug },
+        },
+        update: {},
+        create: {
           id,
           ...entry,
           status: "PUBLISHED",
@@ -81,18 +87,20 @@ async function main() {
   }
   server = spawn(
     process.execPath,
-    ["node_modules/next/dist/bin/next", "dev", "-p", "3001"],
+    ["node_modules/tsx/dist/cli.mjs", "scripts/dev.ts", "--port", "3001"],
     { cwd: root, env, stdio: "ignore", windowsHide: true },
   );
   let ready = false;
   for (let i = 0; i < 90; i++) {
     try {
-      const result = await fetch("http://localhost:3001/admin");
+      const result = await fetch("http://127.0.0.1:3001/admin");
       if (result.ok) {
         ready = true;
         break;
       }
-    } catch {}
+    } catch {
+      /* Wait for the isolated frontend and backend to start. */
+    }
     await new Promise((r) => setTimeout(r, 1000));
   }
   if (!ready) throw new Error("CMS test server did not become ready");

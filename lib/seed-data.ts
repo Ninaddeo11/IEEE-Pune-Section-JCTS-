@@ -24,6 +24,47 @@ const activity = (
 export const seedEntries: Entry[] = [
   ...seedPages,
   ...[
+    "Professional",
+    "Technical",
+    "Research",
+    "Innovation",
+    "Humanitarian",
+    "Humanities",
+    "Non-Technical",
+    "Pre-University",
+    "Administrative",
+  ].map((title, i) => ({
+    ...blankEntry,
+    id: `category-${i}`,
+    collection: "categories",
+    slug: slugify(title),
+    title,
+    status: "PUBLISHED",
+    data: { order: i },
+  })),
+  ...[
+    ["upcoming", "Upcoming activities", "activities", "upcoming"],
+    ["spotlight", "In the spotlight", "activities", "featured"],
+    ["about", "Progress happens when minds connect.", "settings", "all"],
+    ["statistics", "Impact, in numbers.", "statistics", "all"],
+    ["partners", "Progress through collaboration.", "partners", "all"],
+  ].map(([slug, title, source, selection], i) => ({
+    ...blankEntry,
+    id: `module-${slug}`,
+    collection: "homepage",
+    slug,
+    title,
+    status: "PUBLISHED",
+    data: {
+      order: i + 2,
+      source,
+      selection,
+      itemCount: 3,
+      enabled: true,
+      kind: slug === "spotlight" ? "spotlight" : "collection",
+    },
+  })),
+  ...[
     "Professional Development",
     "Technical",
     "Research",
@@ -340,4 +381,56 @@ export const seedEntries: Entry[] = [
     status: "PUBLISHED",
     data: { url: `/${slugify(title)}`, order: i },
   })),
-];
+].map((item) =>
+  item.collection === "homepage"
+    ? {
+        ...item,
+        data: {
+          ...item.data,
+          kind:
+            item.slug === "hero"
+              ? "hero"
+              : item.slug === "join"
+                ? "cta"
+                : item.slug === "about"
+                  ? "about"
+                  : item.slug === "statistics"
+                    ? "statistics"
+                    : item.slug === "spotlight"
+                      ? "spotlight"
+                      : "collection",
+          source:
+            (
+              {
+                focus: "focus-areas",
+                knowledge: "research",
+                statistics: "activities",
+              } as Record<string, string>
+            )[item.slug] ||
+            (item.data as Record<string, unknown>).source ||
+            item.slug,
+          selection:
+            item.slug === "statistics"
+              ? "with-statistics"
+              : (item.data as Record<string, unknown>).selection ||
+                (item.slug === "activities" ? "homepage" : "all"),
+          order:
+            (
+              {
+                hero: -100,
+                about: 1,
+                statistics: 2,
+                focus: 3,
+                upcoming: 4,
+                activities: 5,
+                spotlight: 6,
+                knowledge: 7,
+                news: 8,
+                join: 9,
+                partners: 10,
+              } as Record<string, number>
+            )[item.slug] ?? 0,
+        },
+      }
+    : item,
+);

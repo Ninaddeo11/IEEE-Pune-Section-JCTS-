@@ -1,13 +1,11 @@
-"use client";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  slugify,
-  statuses,
-  categories,
-  publicCollection,
-  type Entry,
-} from "@/lib/content";
+import { useRouter } from "@/client/router";
+import { slugify, statuses, publicCollection, type Entry } from "@/lib/content";
+import { permits, assertTransition } from "@/lib/policy";
+import { localInput } from "@/lib/dates";
+import AssetUpload from "./asset-upload";
+import Revisions from "./revisions";
+import ModuleFields from "./module-fields";
 import RichEditor from "./rich-editor";
 import StructuredFields from "./structured-fields";
 import type { JSONContent } from "@tiptap/react";
@@ -21,6 +19,12 @@ type MediaOption = {
 const extraFields: Record<string, string[]> = {
   pages: ["subheading", "ctaHeading", "ctaDescription", "ctaText", "ctaUrl"],
   activities: [
+    "url",
+    "activityType",
+    "registrationStatus",
+    "registrationDetails",
+    "videoThumbnail",
+    "videoDescription",
     "startTime",
     "endTime",
     "timezone",
@@ -34,6 +38,7 @@ const extraFields: Record<string, string[]> = {
     "capacity",
     "videoUrl",
   ],
+  people: ["designation", "organization", "bio", "profileUrl"],
   leadership: ["designation", "organization", "bio", "profileUrl", "group"],
   research: [
     "abstract",
@@ -84,12 +89,21 @@ export default function Editor({
   initial,
   media,
   readOnly = false,
+  actor,
+  categories = [],
+  records = [],
+  userId,
 }: {
   initial: Entry;
   media: MediaOption[];
   readOnly?: boolean;
+  actor: { role: string; permissions?: unknown };
+  categories?: string[];
+  records?: Entry[];
+  userId: string;
 }) {
   const router = useRouter();
+  const [assets, setAssets] = useState(media);
   const [item, setItem] = useState(initial);
   const [extra, setExtra] = useState(
     JSON.stringify(
@@ -114,7 +128,7 @@ export default function Editor({
       ),
     }),
   );
-  const key = `jcts-editor:${initial.collection}:${initial.id || "new"}`;
+  const key = `jcts-editor:${userId}:${initial.collection}:${initial.id || "new"}`;
   useEffect(() => {
     if (restored.current) return;
     restored.current = true;
@@ -136,6 +150,10 @@ export default function Editor({
   useEffect(() => {
     if (!ready || readOnly) return;
     const timeout = setTimeout(() => {
+      if (JSON.stringify({ item, extra }) === lastSaved.current) {
+        localStorage.removeItem(key);
+        return;
+      }
       try {
         localStorage.setItem(key, JSON.stringify({ item, extra }));
         setSaved("Recovery copy saved on this device");
@@ -162,7 +180,13 @@ export default function Editor({
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error);
-        lastSaved.current = revision;
+        lastSaved.current = JSON.stringify({ item: result, extra });
+        setItem((old) => ({
+          ...old,
+          data: result.data,
+          version: result.version,
+          updatedAt: result.updatedAt,
+        }));
         setSaved("Draft autosaved to database");
       } catch {
         setSaved("Database autosave unavailable — recovery copy retained");
@@ -170,6 +194,42 @@ export default function Editor({
     }, 10000);
     return () => clearTimeout(timer);
   }, [item, extra, ready, readOnly, busy]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!readOnly && JSON.stringify({ item, extra }) !== lastSaved.current)
+        event.preventDefault();
+    };
+    const leave = (event: MouseEvent) => {
+      const link = (event.target as Element).closest?.(
+        "a[href]",
+      ) as HTMLAnchorElement | null;
+      if (
+        !readOnly &&
+        link &&
+        link.target !== "_blank" &&
+        !link.hash &&
+        JSON.stringify({ item, extra }) !== lastSaved.current &&
+        !window.confirm("You have unsaved changes. Leave this editor?")
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    document.addEventListener("click", leave, true);
+    window.addEventListener("beforeunload", warn);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      document.removeEventListener("click", leave, true);
+    };
+  }, [item, extra, readOnly]);
+  const allowedStatuses = statuses.filter((status) => {
+    try {
+      assertTransition(actor, item.collection, item.status, status);
+      return true;
+    } catch {
+      return false;
+    }
+  });
   function change<K extends keyof Entry>(field: K, value: Entry[K]) {
     setItem((old) => ({ ...old, [field]: value }));
   }
@@ -242,7 +302,7 @@ export default function Editor({
       setBusy(false);
     }
   }
-  const linkedMedia = media.filter((m) => m.mime.startsWith("image/"));
+  const linkedMedia = assets.filter((m) => m.mime.startsWith("image/"));
   return (
     <>
       <div className="admin-heading">
@@ -381,6 +441,65 @@ export default function Editor({
         </div>
         <div className="admin-panel">
           <h2>Media & visibility</h2>
+          {permits(actor, "MEDIA_UPLOAD", "media") && (
+            <AssetUpload
+              onUpload={(asset, purpose) => {
+                setAssets((old) => [...old, asset]);
+                if (purpose === "cover") {
+                  change("image", asset.url);
+                  change("imageAlt", asset.alt);
+                } else {
+                  try {
+                    const d = JSON.parse(extra);
+                    setExtra(
+                      JSON.stringify(
+                        {
+                          ...d,
+                          ...(purpose === "gallery"
+                            ? {
+                                gallery: [
+                                  ...(d.gallery || []),
+                                  {
+                                    url: asset.url,
+                                    alt: asset.alt,
+                                    type: asset.mime.startsWith("video/")
+                                      ? "video"
+                                      : "image",
+                                  },
+                                ],
+                              }
+                            : purpose === "video"
+                              ? {
+                                  videoUrl: asset.url,
+                                  videoDescription: asset.alt,
+                                }
+                              : { videoThumbnail: asset.url }),
+                        },
+                        null,
+                        2,
+                      ),
+                    );
+                  } catch {
+                    setError(
+                      "Upload succeeded. Fix structured content then select the asset.",
+                    );
+                  }
+                }
+              }}
+            />
+          )}
+          {item.image && (
+            <button
+              type="button"
+              className="button secondary small"
+              onClick={() => {
+                change("image", "");
+                change("imageAlt", "");
+              }}
+            >
+              Remove cover
+            </button>
+          )}
           <div className="form-grid">
             <label className="wide">
               Choose an existing image
@@ -441,11 +560,98 @@ export default function Editor({
         </div>
         <div className="admin-panel">
           <h2>Content details</h2>
+          {item.collection === "homepage" && (
+            <ModuleFields value={extra} onChange={setExtra} records={records} />
+          )}
+          {item.collection === "activities" && (
+            <div className="form-grid">
+              <label>
+                Reusable person
+                <select
+                  value=""
+                  onChange={(e) => {
+                    try {
+                      const d = JSON.parse(extra);
+                      setExtra(
+                        JSON.stringify(
+                          {
+                            ...d,
+                            people: [
+                              ...(d.people || []),
+                              { personId: e.target.value, role: "Speaker" },
+                            ],
+                          },
+                          null,
+                          2,
+                        ),
+                      );
+                    } catch {
+                      setError("Fix structured content first");
+                    }
+                  }}
+                >
+                  <option value="">Add a person...</option>
+                  {records
+                    .filter((r) => r.collection === "people")
+                    .map((p) => (
+                      <option value={p.id} key={p.id}>
+                        {p.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {(() => {
+                try {
+                  const d = JSON.parse(extra);
+                  return (d.people || []).map(
+                    (person: { personId: string; role: string }, i: number) => (
+                      <div key={i}>
+                        <span>
+                          {records.find((r) => r.id === person.personId)
+                            ?.title || "Unavailable person"}
+                        </span>
+                        <select
+                          aria-label="Participation role"
+                          value={person.role}
+                          onChange={(e) => {
+                            d.people[i].role = e.target.value;
+                            setExtra(JSON.stringify(d, null, 2));
+                          }}
+                        >
+                          {[
+                            "Speaker",
+                            "Organizer",
+                            "Coordinator",
+                            "Partner",
+                            "Host",
+                          ].map((r) => (
+                            <option key={r}>{r}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="button secondary small"
+                          onClick={() => {
+                            d.people.splice(i, 1);
+                            setExtra(JSON.stringify(d, null, 2));
+                          }}
+                        >
+                          Remove person
+                        </button>
+                      </div>
+                    ),
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
+            </div>
+          )}
           <StructuredFields
             collection={item.collection}
             value={extra}
             onChange={setExtra}
-            media={media}
+            media={assets}
           />
           <div className="form-grid">
             {(extraFields[item.collection] ?? []).map((field) => (
@@ -453,26 +659,76 @@ export default function Editor({
                 {field
                   .replace(/([A-Z])/g, " $1")
                   .replace(/^./, (c) => c.toUpperCase())}
-                <input
-                  value={(() => {
-                    try {
-                      return String(JSON.parse(extra)[field] ?? "");
-                    } catch {
-                      return "";
+                {["format", "registrationStatus"].includes(field) ? (
+                  <select
+                    value={String(
+                      (() => {
+                        try {
+                          return JSON.parse(extra)[field] || "";
+                        } catch {
+                          return "";
+                        }
+                      })(),
+                    )}
+                    onChange={(e) => {
+                      try {
+                        setExtra(
+                          JSON.stringify(
+                            { ...JSON.parse(extra), [field]: e.target.value },
+                            null,
+                            2,
+                          ),
+                        );
+                      } catch {
+                        setError("Fix structured content first");
+                      }
+                    }}
+                  >
+                    <option value="">Choose...</option>
+                    {(field === "format"
+                      ? ["Online", "Offline", "Hybrid"]
+                      : [
+                          "Open",
+                          "Closed",
+                          "Coming soon",
+                          "Full",
+                          "Not required",
+                        ]
+                    ).map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={
+                      ["startTime", "endTime"].includes(field)
+                        ? "time"
+                        : field === "registrationDeadline"
+                          ? "date"
+                          : field === "capacity"
+                            ? "number"
+                            : "text"
                     }
-                  })()}
-                  onChange={(e) => {
-                    try {
-                      const value = JSON.parse(extra);
-                      value[field] = e.target.value;
-                      setExtra(JSON.stringify(value, null, 2));
-                    } catch {
-                      setError(
-                        "Fix the structured JSON before editing detail fields.",
-                      );
-                    }
-                  }}
-                />
+                    value={(() => {
+                      try {
+                        return String(JSON.parse(extra)[field] ?? "");
+                      } catch {
+                        return "";
+                      }
+                    })()}
+                    onChange={(e) => {
+                      try {
+                        const value = JSON.parse(extra);
+                        value[field] = e.target.value;
+                        setExtra(JSON.stringify(value, null, 2));
+                      } catch {
+                        setError(
+                          "Fix the structured JSON before editing detail fields.",
+                        );
+                      }
+                    }}
+                  />
+                )}
               </label>
             ))}
           </div>
@@ -516,7 +772,7 @@ export default function Editor({
                 value={item.status}
                 onChange={(e) => change("status", e.target.value)}
               >
-                {statuses.map((s) => (
+                {allowedStatuses.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
@@ -533,7 +789,7 @@ export default function Editor({
               Scheduled publication
               <input
                 type="datetime-local"
-                value={item.publishAt ? item.publishAt.slice(0, 16) : ""}
+                value={localInput(item.publishAt)}
                 onChange={(e) =>
                   change(
                     "publishAt",
@@ -547,6 +803,20 @@ export default function Editor({
           </div>
         </div>
       </fieldset>
+      {item.id && !readOnly && (
+        <Revisions
+          id={item.id}
+          onRestore={(old) => {
+            setItem({
+              ...old,
+              id: item.id,
+              version: item.version,
+              status: "DRAFT",
+            });
+            setExtra(JSON.stringify(old.data, null, 2));
+          }}
+        />
+      )}
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -556,8 +826,27 @@ export default function Editor({
         <span role="status">{saved || "All changes saved"}</span>
         {!readOnly && (
           <>
+            {allowedStatuses.includes("REVIEW") && (
+              <button
+                disabled={busy}
+                className="button secondary small"
+                onClick={() => save("REVIEW")}
+              >
+                Submit for review
+              </button>
+            )}
+            {permits(actor, "APPROVE", item.collection) &&
+              item.status === "REVIEW" && (
+                <button
+                  disabled={busy}
+                  className="button small"
+                  onClick={() => save("APPROVED")}
+                >
+                  Approve
+                </button>
+              )}
             <button
-              disabled={busy}
+              disabled={busy || !allowedStatuses.includes("DRAFT")}
               className="button secondary small"
               onClick={() => save("DRAFT")}
             >
@@ -577,13 +866,15 @@ export default function Editor({
             >
               Save changes
             </button>
-            <button
-              disabled={busy}
-              className="button small"
-              onClick={() => save("PUBLISHED")}
-            >
-              Publish ↗
-            </button>
+            {permits(actor, "PUBLISH", item.collection) && (
+              <button
+                disabled={busy}
+                className="button small"
+                onClick={() => save("PUBLISHED")}
+              >
+                Publish ↗
+              </button>
+            )}
           </>
         )}
         {initial.id && !readOnly && (
@@ -603,7 +894,7 @@ export default function Editor({
                 const r = await fetch("/api/content", {
                   method: "DELETE",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: item.id }),
+                  body: JSON.stringify({ id: item.id, version: item.version }),
                 });
                 const data = await r.json();
                 if (!r.ok) throw new Error(data.error);

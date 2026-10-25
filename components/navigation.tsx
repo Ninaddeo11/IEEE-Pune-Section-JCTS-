@@ -1,6 +1,6 @@
-"use client";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Brand from "@/components/brand";
+import Link from "@/client/router";
+import { usePathname } from "@/client/router";
 import { useEffect, useRef, useState } from "react";
 import { Menu, X, Search, ArrowUpRight, Command } from "lucide-react";
 import type { Entry } from "@/lib/content";
@@ -13,6 +13,7 @@ export default function Navigation({ items }: { items: Entry[] }) {
   useEffect(() => {
     const scroll = () => setCompact(window.scrollY > 30);
     const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setSearch((v) => !v);
@@ -33,12 +34,7 @@ export default function Navigation({ items }: { items: Entry[] }) {
   return (
     <>
       <header className={`site-header ${compact ? "compact" : ""}`}>
-        <Link href="/" className="brand" aria-label="JCTS home">
-          <span className="brand-symbol">⟐</span>
-          <span>
-            JCTS<span className="brand-sub">IEEE PUNE SECTION</span>
-          </span>
-        </Link>
+        <Brand />
         <nav
           className={open ? "nav-links open" : "nav-links"}
           aria-label="Main navigation"

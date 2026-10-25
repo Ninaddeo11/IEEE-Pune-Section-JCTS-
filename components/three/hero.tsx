@@ -1,7 +1,6 @@
-"use client";
-import dynamic from "next/dynamic";
+import { lazy, Suspense } from "react";
 import { Component, useEffect, useState, useRef, type ReactNode } from "react";
-const Scene = dynamic(() => import("./hero-scene"), { ssr: false });
+const Scene = lazy(() => import("./hero-scene"));
 class Boundary extends Component<{ children: ReactNode }, { error: boolean }> {
   state = { error: false };
   static getDerivedStateFromError() {
@@ -47,7 +46,9 @@ export default function Hero3D() {
         requestAnimationFrame(() => setEnabled(true));
         gl.getExtension("WEBGL_lose_context")?.loseContext();
       }
-    } catch {}
+    } catch {
+      /* Keep the CSS fallback when WebGL is unavailable. */
+    }
   }, []);
   return (
     <div className="hero-visual" ref={element} aria-hidden="true">
@@ -62,7 +63,9 @@ export default function Hero3D() {
       {enabled && (
         <div className="webgl-scene">
           <Boundary>
-            <Scene active={active} />
+            <Suspense fallback={null}>
+              <Scene active={active} />
+            </Suspense>
           </Boundary>
         </div>
       )}

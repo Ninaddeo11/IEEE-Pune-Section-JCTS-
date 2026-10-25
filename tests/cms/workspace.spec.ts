@@ -3,10 +3,10 @@ import { PrismaClient } from "@prisma/client";
 import { blankEntry, collections, roles, canManage } from "../../lib/content";
 let admin: APIRequestContext;
 const db = new PrismaClient();
-const origin = { Origin: "http://localhost:3001" };
+const origin = { Origin: "http://127.0.0.1:3001" };
 test.beforeAll(async ({ playwright }) => {
   admin = await playwright.request.newContext({
-    baseURL: "http://localhost:3001",
+    baseURL: "http://127.0.0.1:3001",
     extraHTTPHeaders: origin,
   });
   const response = await admin.post("/api/auth", {
@@ -72,8 +72,14 @@ test("homepage, page copy, navigation and private homepage previews use CMS reco
       await (await request.get(`/?preview=${preview.id}`)).text(),
     ).not.toContain("Private homepage proposal");
   } finally {
-    for (const record of [hero, about, nav])
-      await admin.post("/api/content", { data: record });
+    for (const record of [hero, about, nav]) {
+      const fresh = await db.content.findUniqueOrThrow({
+        where: { id: record.id },
+      });
+      await admin.post("/api/content", {
+        data: { ...record, version: fresh.version },
+      });
+    }
   }
 });
 test("an administrator can create, preview, publish, unpublish and delete an activity", async ({
@@ -295,7 +301,7 @@ test("all seven roles enforce collection permissions and disabled sessions are r
 }) => {
   for (const role of roles) {
     const session = await playwright.request.newContext({
-      baseURL: "http://localhost:3001",
+      baseURL: "http://127.0.0.1:3001",
       extraHTTPHeaders: origin,
     });
     expect(
@@ -378,4 +384,454 @@ test("scheduling changes public visibility without exposing future drafts", asyn
     "/activities/scheduled-test",
   );
   await admin.delete("/api/content", { data: { id: record.id } });
+});
+
+test("required activity workflow: event manager submits, chapter admin publishes, public distribution and concurrency", async ({
+  playwright,
+  request,
+}) => {
+  const event = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3001",
+    extraHTTPHeaders: origin,
+  });
+  const chapter = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3001",
+    extraHTTPHeaders: origin,
+  });
+  for (const [ctx, role] of [
+    [event, "event_manager"],
+    [chapter, "chapter_admin"],
+  ] as const)
+    expect(
+      (
+        await ctx.post("/api/auth", {
+          data: {
+            email: `${role}@cms-test.invalid`,
+            password: process.env.CMS_TEST_PASSWORD,
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aQioAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const upload = await event.post("/api/media", {
+    multipart: {
+      file: { name: "banner.png", mimeType: "image/png", buffer: png },
+      alt: "Workshop banner",
+    },
+  });
+  expect(upload.ok(), await upload.text()).toBe(true);
+  const media = await upload.json();
+  const input = {
+    ...blankEntry,
+    title: "AI & Cybersecurity for Schools",
+    slug: "ai-cybersecurity-for-schools",
+    category: "Technical",
+    date: "2026-11-15",
+    summary: "A student-focused workshop on AI and cybersecurity.",
+    body: "A student-focused workshop on AI and cybersecurity.",
+    image: media.url,
+    imageAlt: media.alt,
+    featured: true,
+    homepage: true,
+    data: {
+      venue: "Saraswati International School",
+      startTime: "10:00",
+      endTime: "12:00",
+      timezone: "Asia/Kolkata",
+      format: "Offline",
+      speakers: ["Test speaker"],
+      registrationUrl: "https://example.org/register",
+      registrationStatus: "Open",
+    },
+  };
+  let response = await event.post("/api/content", { data: input });
+  expect(response.ok(), await response.text()).toBe(true);
+  let record = await response.json();
+  try {
+    expect((await request.get(`/activities/${record.slug}`)).status()).toBe(
+      404,
+    );
+    const snapshot = await (
+      await event.post("/api/preview", { data: record })
+    ).json();
+    expect(
+      (
+        await event.get(`/activities/${record.slug}?preview=${snapshot.id}`)
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await event.post("/api/content", {
+          data: { ...record, status: "PUBLISHED" },
+        })
+      ).ok(),
+    ).toBe(false);
+    response = await event.post("/api/content", {
+      data: { ...record, status: "REVIEW" },
+    });
+    expect(response.ok()).toBe(true);
+    record = await response.json();
+    response = await chapter.post("/api/content", {
+      data: { ...record, status: "APPROVED" },
+    });
+    expect(response.ok()).toBe(true);
+    record = await response.json();
+    response = await chapter.post("/api/content", {
+      data: { ...record, status: "PUBLISHED" },
+    });
+    expect(response.ok()).toBe(true);
+    record = await response.json();
+    expect((await request.get(`/activities/${record.slug}`)).status()).toBe(
+      200,
+    );
+    for (const route of [
+      "/activities?q=AI%20%26%20Cybersecurity",
+      "/activities?category=Technical",
+      "/upcoming?q=AI%20%26%20Cybersecurity",
+      "/search?q=AI%20%26%20Cybersecurity",
+      "/sitemap.xml",
+    ])
+      expect(await (await request.get(route)).text()).toContain(record.slug);
+    const html = await (await request.get(`/activities/${record.slug}`)).text();
+    expect(html).toContain("Saraswati International School");
+    expect(html).toContain("04:30:00.000Z");
+    expect(html).toContain("Test speaker");
+    const homeSection = await (
+      await admin.post("/api/content", {
+        data: {
+          ...blankEntry,
+          collection: "homepage",
+          slug: "acceptance-module",
+          title: "Acceptance spotlight",
+          status: "PUBLISHED",
+          data: {
+            kind: "spotlight",
+            source: "activities",
+            selection: "manual",
+            selectedIds: [record.id],
+            order: 20,
+          },
+        },
+      })
+    ).json();
+    try {
+      expect(await (await request.get("/")).text()).toContain(record.slug);
+    } finally {
+      await admin.delete("/api/content", { data: { id: homeSection.id } });
+    }
+    const stale = await chapter.post("/api/content", {
+      data: {
+        ...record,
+        version: record.version - 1,
+        title: "Stale overwrite",
+      },
+    });
+    expect(stale.status()).toBe(409);
+    const revisions = await (
+      await chapter.get(`/api/revisions?id=${record.id}`)
+    ).json();
+    expect(revisions.length).toBeGreaterThanOrEqual(3);
+    expect(
+      (
+        await event.post("/api/content", {
+          data: { ...record, title: "Unauthorized public edit" },
+        })
+      ).ok(),
+    ).toBe(false);
+  } finally {
+    await admin.delete("/api/content", { data: { id: record.id } });
+    await admin.delete("/api/media", { data: { id: media.id } });
+    await event.dispose();
+    await chapter.dispose();
+  }
+});
+
+test("reusable people, revision rollback, role isolation, password change and session revocation", async ({
+  playwright,
+  request,
+}) => {
+  const person = await (
+    await admin.post("/api/content", {
+      data: {
+        ...blankEntry,
+        collection: "people",
+        slug: "test-person",
+        title: "Test speaker profile",
+        status: "PUBLISHED",
+        data: { designation: "Test role", organization: "Test organization" },
+      },
+    })
+  ).json();
+  let item = await (
+    await admin.post("/api/content", {
+      data: {
+        ...blankEntry,
+        title: "People workflow",
+        slug: "people-workflow",
+        status: "DRAFT",
+        data: { people: [{ personId: person.id, role: "Speaker" }] },
+      },
+    })
+  ).json();
+  try {
+    expect(
+      await db.contentParticipant.count({
+        where: { activityId: item.id, personId: person.id },
+      }),
+    ).toBe(1);
+    item = await (
+      await admin.post("/api/content", {
+        data: { ...item, status: "PUBLISHED" },
+      })
+    ).json();
+    expect(
+      await (await request.get("/activities/people-workflow")).text(),
+    ).toContain("Test speaker profile");
+    const revisions = await (
+      await admin.get(`/api/revisions?id=${item.id}`)
+    ).json();
+    const restored = await admin.post("/api/content", {
+      data: {
+        ...revisions[0].payload,
+        id: item.id,
+        version: item.version,
+        status: "DRAFT",
+      },
+    });
+    expect(restored.ok()).toBe(true);
+    expect((await request.get("/activities/people-workflow")).status()).toBe(
+      404,
+    );
+    expect(
+      (await admin.delete("/api/content", { data: { id: person.id } })).ok(),
+    ).toBe(false);
+  } finally {
+    await admin.delete("/api/content", { data: { id: item.id } });
+    await admin.delete("/api/content", { data: { id: person.id } });
+  }
+  const deniedUpload = await admin.post("/api/media", {
+    multipart: {
+      file: {
+        name: "wrong.exe",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("%PDF-1.7"),
+      },
+      alt: "Invalid extension",
+    },
+  });
+  expect(deniedUpload.ok()).toBe(false);
+  const user = await db.user.create({
+    data: {
+      email: "account-test@cms-test.invalid",
+      name: "Account Test",
+      role: "EVENT_MANAGER",
+      passwordHash: await (
+        await import("bcryptjs")
+      ).hash("Initial-test-password-123", 12),
+    },
+  });
+  const ctx = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3001",
+    extraHTTPHeaders: { ...origin, "x-forwarded-for": "127.0.0.2" },
+  });
+  try {
+    expect(
+      (
+        await ctx.post("/api/auth", {
+          data: { email: user.email, password: "Initial-test-password-123" },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect((await ctx.get("/admin/research")).status()).toBe(404);
+    expect(
+      (
+        await ctx.patch("/api/users", {
+          data: { id: user.id, role: "SUPER_ADMIN" },
+        })
+      ).ok(),
+    ).toBe(false);
+    expect(
+      (
+        await ctx.post("/api/account", {
+          data: {
+            currentPassword: "wrong",
+            password: "Replacement-password-123",
+          },
+        })
+      ).ok(),
+    ).toBe(false);
+    expect(
+      (
+        await ctx.post("/api/account", {
+          data: {
+            currentPassword: "Initial-test-password-123",
+            password: "Replacement-password-123",
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(await db.session.count({ where: { userId: user.id } })).toBe(1);
+    expect((await ctx.delete("/api/account")).ok()).toBe(true);
+    expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+  } finally {
+    await ctx.dispose();
+  }
+});
+
+test("publishing grants revoke sessions and managed categories cannot be renamed while in use", async ({
+  playwright,
+}) => {
+  const password = "Grant-test-password-123";
+  const user = await db.user.create({
+    data: {
+      email: "grant-test@cms-test.invalid",
+      name: "Grant Test",
+      role: "EVENT_MANAGER",
+      passwordHash: await (await import("bcryptjs")).hash(password, 12),
+    },
+  });
+  const ctx = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3001",
+    extraHTTPHeaders: { ...origin, "x-forwarded-for": "127.0.0.3" },
+  });
+  const login = () =>
+    ctx.post("/api/auth", { data: { email: user.email, password } });
+  const category = await (
+    await admin.post("/api/content", {
+      data: {
+        ...blankEntry,
+        collection: "categories",
+        slug: "integration-category",
+        title: "Integration category",
+        status: "PUBLISHED",
+      },
+    })
+  ).json();
+  let item: { id: string; version: number; status: string } | undefined;
+  try {
+    expect((await login()).ok()).toBe(true);
+    const response = await ctx.post("/api/content", {
+      data: {
+        ...blankEntry,
+        title: "Grant workflow",
+        slug: "grant-workflow",
+        category: category.title,
+        status: "REVIEW",
+      },
+    });
+    expect(response.ok()).toBe(true);
+    item = await response.json();
+    expect(
+      (
+        await ctx.post("/api/content", {
+          data: { ...blankEntry, ...item, status: "PUBLISHED" },
+        })
+      ).ok(),
+    ).toBe(false);
+    expect(
+      (
+        await admin.patch("/api/users", {
+          data: { id: user.id, permissions: ["activities:PUBLISH"] },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+    expect((await login()).ok()).toBe(true);
+    const published = await ctx.post("/api/content", {
+      data: { ...item, status: "PUBLISHED" },
+    });
+    expect(published.ok(), await published.text()).toBe(true);
+    item = await published.json();
+    expect(
+      (
+        await admin.post("/api/content", {
+          data: { ...category, title: "Renamed category" },
+        })
+      ).ok(),
+    ).toBe(false);
+    expect(
+      (await admin.delete("/api/content", { data: { id: category.id } })).ok(),
+    ).toBe(false);
+  } finally {
+    if (item) await admin.delete("/api/content", { data: { id: item.id } });
+    await admin.delete("/api/content", { data: { id: category.id } });
+    await ctx.dispose();
+  }
+});
+test("activity database filters paginate and search structured metadata", async () => {
+  const fixtureIds: string[] = [];
+  try {
+    for (let i = 0; i < 13; i++) {
+      const response = await admin.post("/api/content", {
+        data: {
+          ...blankEntry,
+          title: `Pagination fixture ${i}`,
+          slug: `pagination-fixture-${i}`,
+          category: "Technical",
+          status: "PUBLISHED",
+          data: { speakers: ["StructuredSearchToken"], format: "Online" },
+        },
+      });
+      expect(response.ok()).toBe(true);
+      fixtureIds.push((await response.json()).id);
+    }
+    const { activityQuery } = await import("../../lib/activity-query");
+    const first = await activityQuery({
+      q: "StructuredSearchToken",
+      category: "Technical",
+      format: "Online",
+      page: "1",
+    });
+    const second = await activityQuery({
+      q: "StructuredSearchToken",
+      page: "2",
+    });
+    expect(first.total).toBe(13);
+    expect(first.items.length).toBe(12);
+    expect(second.items.length).toBe(1);
+    expect(first.items.some((e) => e.id === second.items[0].id)).toBe(false);
+  } finally {
+    for (const id of fixtureIds)
+      await admin.delete("/api/content", { data: { id } });
+  }
+});
+
+test("legacy event timestamp backfill preserves content and applies its timezone", async () => {
+  const { readFileSync } = await import("node:fs");
+  const sql = readFileSync(
+    "prisma/migrations/202610250001_modular_platform/migration.sql",
+    "utf8",
+  );
+  const statements = sql
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s) =>
+      /^UPDATE "Content" SET "(startsAt|endsAt|scheduledAt)"/.test(s),
+    );
+  expect(statements.length).toBeGreaterThanOrEqual(3);
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`CREATE TEMP TABLE "LegacyContent" (LIKE "Content" INCLUDING ALL) ON COMMIT DROP`;
+    await tx.$executeRaw`INSERT INTO "LegacyContent" ("id","collection","slug","title","date","endDate","publishAt","data","updatedAt") VALUES ('legacy-event','activities','legacy-event','Legacy event','2026-11-15','2026-11-15','2026-11-01T00:00:00Z','{"timezone":"Asia/Kolkata","startTime":"10:00","endTime":"12:00"}'::jsonb,NOW())`;
+    for (const statement of statements)
+      await tx.$executeRawUnsafe(
+        statement.replaceAll('"Content"', '"LegacyContent"'),
+      );
+    const rows = await tx.$queryRaw<
+      {
+        title: string;
+        date: string;
+        startsAt: Date;
+        endsAt: Date;
+        scheduledAt: Date;
+      }[]
+    >`SELECT "title","date","startsAt","endsAt","scheduledAt" FROM "LegacyContent"`;
+    expect(rows[0].title).toBe("Legacy event");
+    expect(rows[0].date).toBe("2026-11-15");
+    expect(rows[0].startsAt.toISOString()).toBe("2026-11-15T04:30:00.000Z");
+    expect(rows[0].endsAt.toISOString()).toBe("2026-11-15T06:30:00.000Z");
+    expect(rows[0].scheduledAt.toISOString()).toBe("2026-11-01T00:00:00.000Z");
+  });
 });

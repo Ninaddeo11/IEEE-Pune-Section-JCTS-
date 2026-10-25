@@ -1,4 +1,3 @@
-"use client";
 type Props = {
   collection: string;
   value: string;
@@ -8,6 +7,10 @@ type Props = {
 const arrayFields: Record<string, string[]> = {
   activities: [
     "speakers",
+    "coordinators",
+    "partners",
+    "hosts",
+    "sdgs",
     "organizers",
     "schedule",
     "highlights",

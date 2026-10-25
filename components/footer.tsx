@@ -1,9 +1,9 @@
-import Link from "next/link";
-import { entries } from "@/lib/db";
+import Brand from "@/components/brand";
+import Link from "@/client/router";
 import { safeUrl } from "@/lib/urls";
-import { applyPreview } from "@/lib/preview";
-export default async function Footer() {
-  const all = await applyPreview(await entries());
+import { useView } from "@/client/view";
+export default function Footer() {
+  const all = useView().footer;
   const settings = all.find(
     (e) => e.collection === "settings" && e.slug === "chapter",
   );
@@ -13,12 +13,7 @@ export default async function Footer() {
   return (
     <footer className="site-footer">
       <div className="footer-main">
-        <Link href="/" className="brand">
-          <span className="brand-symbol">⟐</span>
-          <span>
-            JCTS<span className="brand-sub">IEEE PUNE SECTION</span>
-          </span>
-        </Link>
+        <Brand />
         <p>
           {String(
             settings?.data.footerText ??

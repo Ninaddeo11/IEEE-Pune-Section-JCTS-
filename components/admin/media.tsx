@@ -1,7 +1,5 @@
-"use client";
-/* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/client/router";
 import MediaEdit from "./media-edit";
 type Item = {
   id: string;
@@ -16,9 +14,11 @@ type Item = {
 export default function MediaLibrary({
   items,
   editable,
+  canUpload = editable,
 }: {
   items: Item[];
   editable: boolean;
+  canUpload?: boolean;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -33,7 +33,7 @@ export default function MediaLibrary({
           <p>A shared home for chapter images, videos and documents.</p>
         </div>
       </div>
-      {editable && (
+      {canUpload && (
         <div className="admin-panel">
           <h2>Upload a new asset</h2>
           <form

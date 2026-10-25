@@ -1,6 +1,5 @@
-"use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/client/router";
 import { roles } from "@/lib/content";
 type User = {
   id: string;
@@ -8,6 +7,7 @@ type User = {
   email: string;
   role: string;
   active: boolean;
+  permissions?: unknown;
 };
 export default function Users({
   items,
@@ -111,7 +111,113 @@ export default function Users({
               <tr key={u.id}>
                 <td>{u.name}</td>
                 <td>{u.email}</td>
-                <td>{u.role}</td>
+                <td>
+                  {u.id === currentId ? (
+                    u.role
+                  ) : (
+                    <select
+                      aria-label={`Role for ${u.name}`}
+                      value={u.role}
+                      onChange={async (e) => {
+                        try {
+                          const r = await fetch("/api/users", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              id: u.id,
+                              role: e.target.value,
+                            }),
+                          });
+                          const data = await r.json();
+                          if (!r.ok) throw new Error(data.error);
+                          setMessage("Role updated; sessions revoked");
+                          router.refresh();
+                        } catch (err) {
+                          setMessage(String(err));
+                        }
+                      }}
+                    >
+                      {roles.map((r) => (
+                        <option key={r}>{r}</option>
+                      ))}
+                    </select>
+                  )}
+                  {u.id !== currentId && (
+                    <details>
+                      <summary>Publishing grants / password reset</summary>
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          const form = e.currentTarget;
+                          const data = new FormData(form);
+                          try {
+                            const r = await fetch("/api/users", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                id: u.id,
+                                permissions: data.getAll("permissions"),
+                                ...(data.get("password")
+                                  ? { password: data.get("password") }
+                                  : {}),
+                              }),
+                            });
+                            const result = await r.json();
+                            if (!r.ok) throw new Error(result.error);
+                            setMessage("Access updated; sessions revoked");
+                            router.refresh();
+                          } catch (err) {
+                            setMessage(String(err));
+                          }
+                        }}
+                      >
+                        {[
+                          "activities",
+                          "research",
+                          "publications",
+                          "news",
+                          "announcements",
+                          "pages",
+                          "homepage",
+                          "resources",
+                          "opportunities",
+                          "people",
+                        ].map((c) => (
+                          <fieldset key={c}>
+                            <legend>{c}</legend>
+                            {["PUBLISH", "APPROVE", "UNPUBLISH", "ARCHIVE"].map(
+                              (action) => (
+                                <label className="checkbox-label" key={action}>
+                                  <input
+                                    name="permissions"
+                                    type="checkbox"
+                                    value={`${c}:${action}`}
+                                    defaultChecked={
+                                      Array.isArray(u.permissions) &&
+                                      u.permissions.includes(`${c}:${action}`)
+                                    }
+                                  />
+                                  {action.toLowerCase()}
+                                </label>
+                              ),
+                            )}
+                          </fieldset>
+                        ))}
+                        <label>
+                          Reset password
+                          <input
+                            name="password"
+                            type="password"
+                            minLength={12}
+                            maxLength={128}
+                            autoComplete="new-password"
+                          />
+                        </label>
+                        <button className="button small">Save access</button>
+                      </form>
+                    </details>
+                  )}
+                </td>
                 <td>
                   {u.id === currentId ? (
                     "Your account"

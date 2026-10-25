@@ -20,6 +20,8 @@ enum Role {
 enum Status {
   DRAFT
   REVIEW
+  APPROVED
+  COMPLETED
   SCHEDULED
   PUBLISHED
   ARCHIVED
@@ -32,6 +34,7 @@ model User {
   passwordHash String
   role         Role       @default(VIEWER)
   active       Boolean    @default(true)
+  permissions  Json       @default("[]")
   sessions     Session[]
   auditLogs    AuditLog[]
   createdAt    DateTime   @default(now())
@@ -45,6 +48,14 @@ model Session {
 }
 
 model Content {
+  version        Int      @default(1)
+  createdBy      String   @default("")
+  startsAt       DateTime? @db.Timestamptz(3)
+  endsAt         DateTime? @db.Timestamptz(3)
+  scheduledAt    DateTime? @db.Timestamptz(3)
+  participants   ContentParticipant[] @relation("ActivityParticipants")
+  appearances    ContentParticipant[] @relation("PersonAppearances")
+  revisions      ContentRevision[]
   id             String   @id @default(cuid())
   collection     String
   slug           String
@@ -68,6 +79,8 @@ model Content {
 
   @@unique([collection, slug])
   @@index([collection, status])
+  @@index([collection, startsAt])
+  @@index([collection, date])
 }
 
 model Media {
@@ -119,4 +132,25 @@ model ContentPreview {
   expiresAt  DateTime
 
   @@index([expiresAt])
+}
+
+model ContentRevision {
+  id String @id @default(cuid())
+  contentId String
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  version Int
+  userId String
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([contentId, version])
+}
+
+model ContentParticipant {
+  id String @id @default(cuid())
+  activityId String
+  personId String
+  role String
+  activity Content @relation("ActivityParticipants", fields: [activityId], references: [id], onDelete: Cascade)
+  person Content @relation("PersonAppearances", fields: [personId], references: [id], onDelete: Restrict)
+  @@unique([activityId, personId, role])
 }
